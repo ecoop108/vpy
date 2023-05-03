@@ -49,6 +49,10 @@ def tr_class(mod, cls: Type, v: str):
     g = graph(cls_ast)
 
     class ClassTransformer(ast.NodeTransformer):
+        """
+        Takes an AST node of a class and selects only methods for version `v`.
+        Each method is rewritten to match the context of `v` if needed.
+        """
         parent = None
 
         def visit_ClassDef(self, node):
