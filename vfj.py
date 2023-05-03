@@ -1,8 +1,8 @@
-from ast import unparse
+from ast import unparse, parse
 import functools
 import inspect
 from slice import rw, slice
-
+import types
 
 def lens(frm, to, field):
 
@@ -78,14 +78,14 @@ class Name:
     @lens('full', 'start', 'first')
     def lens_first(self) -> str:
         if ' ' in self.full_name:
-            return self.full_name.split[0]
+            return self.full_name.split()[0]
         return self.full_name
 
     @at('full')
     @lens('full', 'start', 'first')
     def lens_last(self) -> str:
         if ' ' in self.full_name:
-            return self.full_name.split[1]
+            return self.full_name.split()[1]
         return ''
 
     @at('start')
@@ -94,29 +94,22 @@ class Name:
         return f"{self.first} {self.last}"
 
     @at('start')
-    def first(self):
-        return self.full_name
+    def first_name(self):
+        return self.first
 
     @at('full')
     def get(self):
         return self.full_name
 
 
-def run_at(v, f):
-
-    @run(v)
-    def wrapped(*args, **kwargs):
-        return f(*args, **kwargs)
-
-    return wrapped
-
-
 @run('full', globals())
 def main():
     obj = Name('Rolling Stones')
     print(obj.get())
-    print(obj.first())
+    print(obj.first_name())
+
 
 
 if __name__ == "__main__":
     main()
+

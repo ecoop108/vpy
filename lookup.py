@@ -2,13 +2,12 @@ import ast
 from typing import Callable, Optional
 import inspect
 from lib_types import Graph, Version
-
+from aux import is_lens
 
 def method_all_lookup(cls_ast):
     return set([
         e.name for e in cls_ast.body
-        if isinstance(e, ast.FunctionDef) and all(d.func.id != 'lens'
-                                                  for d in e.decorator_list)
+        if isinstance(e, ast.FunctionDef) and not is_lens(node)
     ])
 
 
@@ -38,7 +37,7 @@ def replacement_lookup(g: Graph, v: str) -> list[Version]:
 def methodsAt(g: Graph, cls_ast, v):
     methods = [
         m for m in cls_ast.body if isinstance(m, ast.FunctionDef) and any([
-            d.func.id == 'at' and d.args[0].value == v
+            d.func.id == 'at' and d.args[0].value == v and (not is_lens(m))
             for d in m.decorator_list
         ])
     ]
@@ -69,7 +68,7 @@ def method_lookup(g, cls_ast, m, v: str):
     # upgrade search
     um = [
         me
-        for me in [method_lookup(g, cls_ast, m, r) for r in version.upgrades]
+        for me in [method_lookup(g.delete(v), cls_ast, m, r) for r in version.upgrades+version.replaces]
         if me is not None
     ]
     if len(um) == 1:
