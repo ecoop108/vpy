@@ -11,17 +11,16 @@ def method_all_lookup(cls_ast):
     ])
 
 
-def lens_lookup(g, v, t, f, cls) -> Optional[tuple[ast.FunctionDef, Callable]]:
+def lens_lookup(g, v, t, cls) -> Optional[dict[str, tuple[ast.FunctionDef, Callable]]]:
     src = inspect.getsource(cls)
     cls_ast = ast.parse(src).body[0]
     cl_lenses = [
-        m for m in cls_ast.body for d in m.decorator_list if
-        d.func.id == 'lens' and d.args[0].value == v and d.args[1].value == t and d.args[2].value == f
+        (m, d.args[2].value) for m in cls_ast.body for d in m.decorator_list if
+        d.func.id == 'lens' and d.args[0].value == v and d.args[1].value == t 
         if isinstance(m, ast.FunctionDef)
     ]
     if cl_lenses:
-        node = cl_lenses[0]
-        return (node, getattr(cls, node.name))
+        return {field: (node, getattr(cls, node.name)) for node, field in cl_lenses}
     return None
 
 

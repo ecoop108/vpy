@@ -1,8 +1,8 @@
-from ast import unparse, parse
 import functools
 import inspect
-from slice import rw, slice
+from slice import rw
 import types
+import importlib
 
 def lens(frm, to, field):
 
@@ -47,73 +47,18 @@ def run(v, scope=None):
             vars = dict(globals())
             stmts = []
             out = []
+            mod = inspect.getmodule(f)
             if scope is not None:
                 vars.update(scope)
-            for n, cls in dict(vars).items():
-                if inspect.isclass(cls):
-                    rwn = rw(cls, v)
-                    vars.update(locals())
-                    exec(f'global {n}\n{n}=rwn')
+            classes = [m[0] for m in inspect.getmembers(mod, inspect.isclass) if m[1].__module__ == mod.__name__]
+            for cls_name in classes:
+                cls = getattr(mod, cls_name)
+                rwn = rw(cls, v)
+                vars.update(locals())
+                importlib.import_module(mod.__name__)
+                setattr(mod, cls_name, rwn)
             return f()
 
         return wrapper_run
 
     return decorator_run
-
-@version(name='start')
-@version(name='full', replaces=['start'])
-class Name:
-
-    @at('start')
-    def __init__(self, first, last):
-        self.first = first
-        self.last = last
-
-    @at('full')
-    def __init__(self, full):
-        self.full_name = full
-
-    @at('full')
-    @lens('full', 'start', 'first')
-    def lens_first(self) -> str:
-        if ' ' in self.full_name:
-            return self.full_name.split()[0]
-        return self.full_name
-
-    @at('full')
-    @lens('full', 'start', 'last')
-    def lens_last(self) -> str:
-        if ' ' in self.full_name:
-            return self.full_name.split()[1]
-        return ''
-
-    @at('start')
-    @lens('start', 'full', 'full_name')
-    def lens_full(self):
-        return f"{self.first} {self.last}"
-
-    @at('start')
-    def first_name(self):
-        return self.first
-
-    @at('full')
-    def get(self):
-        return self.full_name
-
-
-@run('full', globals())
-def main():
-    obj = Name('Rolling Stones')
-    print(obj.get())
-    print(obj.first_name())
-    #b()
-
-@run('start', globals())
-def b():
-    ob = Name("axs","ai")
-    print(ob.first_name())
-
-
-if __name__ == "__main__":
-    main()
-

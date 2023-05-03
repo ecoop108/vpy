@@ -14,7 +14,7 @@ def graph(cls_ast: ast.ClassDef) -> Graph:
     })
 
 
-def tr_lens(node, lens):
+def tr_lens(parent, node, lenses):
     """
     Takes an AST node of a function and changes all expressions in the body of the form self.x
     to be of the form self.lens_x()
@@ -24,17 +24,18 @@ def tr_lens(node, lens):
 
         def visit_Attribute(self, node):
             if isinstance(node.value, ast.Name) and node.value.id == 'self':
-
                 if isinstance(node.ctx, ast.Load):
                     # Create the attribute node for "self.lens"
+                    lens_node, lens_function = lenses[node.attr]
                     self_attr = ast.Attribute(value=ast.Name(id='self',
                                                              ctx=ast.Load()),
-                                              attr=lens,
+                                              attr=lens_node.name,
                                               ctx=ast.Load())
 
                     # Create the call node for "self.lens()"
                     self_call = ast.Call(func=self_attr, args=[], keywords=[])
                     node = self_call
+                    parent.body.append(lens_node)
             return node
 
     LensTransformer().visit(node)
@@ -68,11 +69,10 @@ def tr_class(cls: Type, v: str):
             if mver != target:
                 return None
             fields = lookup.fields_lookup(g, cls_ast, target)
-            lenses = [r for f in fields if (r:=lookup.lens_lookup(g, v, target, f, cls)) is not None]
-            if lenses != []:
-                for lens_node, lens in lenses:
-                    node = tr_lens(node, lens_node.name)
-                    self.parent.body.append(lens_node)
+            lenses = lookup.lens_lookup(g, v, target, cls)
+            if lenses is not None:
+                node = tr_lens(self.parent, node, lenses)
+                #self.parent.body.append(lens_node)
             return node
 
     ClassTransformer().visit(cls_ast)
