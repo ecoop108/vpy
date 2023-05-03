@@ -1,7 +1,20 @@
 from ast import unparse
 import functools
 import inspect
-from slice import rw
+from slice import rw, slice
+
+
+def lens(frm, to, field):
+
+    def decorator_version(cl):
+
+        @functools.wraps(cl)
+        def wrapper_version(*args, **kwargs):
+            return cl(*args, **kwargs)
+
+        return wrapper_version
+
+    return decorator_version
 
 
 def at(name):
@@ -25,72 +38,84 @@ def version(name, replaces=[], upgrades=[]):
     return decorator_version
 
 
-@version(name='start')
-@version(name='bugfix', replaces=['start'])
-@version(name='dec', upgrades=['start'])
-class A:
+def run(v, scope=None):
 
-    @at('start')
-    def __init__(self, counter):
-        self.counter = counter
+    def decorator_run(f):
 
-    @at('start')
-    def inc(self):
-        self.counter += 2
-
-    @at('bugfix')
-    def inc(self):
-        self.counter += 1
-
-    @at('dec')
-    def dec(self):
-        self.counter -= 1
-
-
-class AC:
-
-    def _start___init__(self, counter):
-        self.counter = counter
-
-    def _dec___init__(self, counter):
-        self._start___init__(counter)
-
-    def _start_inc(self):
-        self.counter += 2
-
-    def _bugfix_inc(self):
-        self.counter += 1
-
-    def _dec_inc(self):
-        self._bugfix_inc()
-
-    def _dec_dec(self):
-        self.counter -= 1
-
-
-def run(v):
-
-    def decorator_run(cl):
-
-        @functools.wraps(cl)
+        @functools.wraps(f)
         def wrapper_run(*args, **kwargs):
-            for n, cl in globals().items():
-                if inspect.isclass(cl):
-                    print(n)
-                    exec(f'global {n}\n{n}=rw({n}, "{v}")')
-            return cl()
+            vars = dict(globals())
+            stmts = []
+            out = []
+            if scope is not None:
+                vars.update(scope)
+            for n, cls in dict(vars).items():
+                if inspect.isclass(cls):
+                    rwn = rw(cls, v)
+                    vars.update(locals())
+                    exec(f'global {n}\n{n}=rwn')
+            return f()
 
         return wrapper_run
 
     return decorator_run
 
 
-@run('dec')
+@version(name='start')
+@version(name='full', replaces=['start'])
+class Name:
+
+    @at('start')
+    def __init__(self, first, last):
+        self.first = first
+        self.last = last
+
+    @at('full')
+    def __init__(self, full):
+        self.full_name = full
+
+    @at('full')
+    @lens('full', 'start', 'first')
+    def lens_first(self) -> str:
+        if ' ' in self.full_name:
+            return self.full_name.split[0]
+        return self.full_name
+
+    @at('full')
+    @lens('full', 'start', 'first')
+    def lens_last(self) -> str:
+        if ' ' in self.full_name:
+            return self.full_name.split[1]
+        return ''
+
+    @at('start')
+    @lens('start', 'full', 'full_name')
+    def lens_full(self):
+        return f"{self.first} {self.last}"
+
+    @at('start')
+    def first(self):
+        return self.full_name
+
+    @at('full')
+    def get(self):
+        return self.full_name
+
+
+def run_at(v, f):
+
+    @run(v)
+    def wrapped(*args, **kwargs):
+        return f(*args, **kwargs)
+
+    return wrapped
+
+
+@run('full', globals())
 def main():
-    ctr = A(4)
-    ctr.inc()
-    ctr.dec()
-    print(ctr.counter)
+    obj = Name('Rolling Stones')
+    print(obj.get())
+    print(obj.first())
 
 
 if __name__ == "__main__":
