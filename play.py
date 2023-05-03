@@ -35,18 +35,23 @@ class Name:
     def reverse(self):
         return self.last + ", " + self.first
 
+    @at('start')
+    def aa(self):
+        return self.last + "xxx" + self.first
+
     @at('full')
     def get(self):
         return self.full_name
 
 
-@run('full', globals())
+@run('full')
 def main():
     obj = Name('Rolling Stones')
     print(obj.get())
     print(obj.reverse())
+    b()
 
-@run('start', globals())
+@run('start')
 def b():
     obj = Name("abc", "def")
     print(obj.get())

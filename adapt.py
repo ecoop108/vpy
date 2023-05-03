@@ -35,14 +35,15 @@ def tr_lens(parent, node, lenses):
                     # Create the call node for "self.lens()"
                     self_call = ast.Call(func=self_attr, args=[], keywords=[])
                     node = self_call
-                    parent.body.append(lens_node)
+                    if not any(e for e in parent.body if isinstance(e, ast.FunctionDef) and e.name == lens_node.name):
+                        parent.body.append(lens_node) 
             return node
 
     LensTransformer().visit(node)
     return node
 
 
-def tr_class(cls: Type, v: str):
+def tr_class(mod, cls: Type, v: str):
     src = inspect.getsource(cls)
     cls_ast: ast.ClassDef = ast.parse(src).body[0]
     g = graph(cls_ast)
@@ -72,7 +73,6 @@ def tr_class(cls: Type, v: str):
             lenses = lookup.lens_lookup(g, v, target, cls)
             if lenses is not None:
                 node = tr_lens(self.parent, node, lenses)
-                #self.parent.body.append(lens_node)
             return node
 
     ClassTransformer().visit(cls_ast)
@@ -80,7 +80,7 @@ def tr_class(cls: Type, v: str):
     return remove_decorators(cls_ast)
 
 def remove_decorators(node):
-    exclude = ['at', 'version', 'lens']
+    exclude = ['at', 'version', 'lens', 'run']
     for child in ast.walk(node):
         new_decorators = []
         if isinstance(child, ast.FunctionDef) or isinstance(child, ast.ClassDef):
