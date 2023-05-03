@@ -60,7 +60,6 @@ def run(v, scope=None):
 
     return decorator_run
 
-
 @version(name='start')
 @version(name='full', replaces=['start'])
 class Name:
@@ -82,7 +81,7 @@ class Name:
         return self.full_name
 
     @at('full')
-    @lens('full', 'start', 'first')
+    @lens('full', 'start', 'last')
     def lens_last(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[1]
@@ -107,7 +106,12 @@ def main():
     obj = Name('Rolling Stones')
     print(obj.get())
     print(obj.first_name())
+    #b()
 
+@run('start', globals())
+def b():
+    ob = Name("axs","ai")
+    print(ob.first_name())
 
 
 if __name__ == "__main__":

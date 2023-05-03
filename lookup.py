@@ -2,7 +2,7 @@ import ast
 from typing import Callable, Optional
 import inspect
 from lib_types import Graph, Version
-from aux import is_lens
+from aux import is_lens, get_at
 
 def method_all_lookup(cls_ast):
     return set([
@@ -11,18 +11,18 @@ def method_all_lookup(cls_ast):
     ])
 
 
-def lens_lookup(g, v, t, cls) -> Optional[tuple[ast.FunctionDef, Callable]]:
+def lens_lookup(g, v, t, f, cls) -> Optional[tuple[ast.FunctionDef, Callable]]:
     src = inspect.getsource(cls)
     cls_ast = ast.parse(src).body[0]
     cl_lenses = [
         m for m in cls_ast.body for d in m.decorator_list if
-        d.func.id == 'lens' and d.args[0].value == v and d.args[1].value == t
+        d.func.id == 'lens' and d.args[0].value == v and d.args[1].value == t and d.args[2].value == f
         if isinstance(m, ast.FunctionDef)
     ]
     if cl_lenses:
         node = cl_lenses[0]
         return (node, getattr(cls, node.name))
-    return (None, None)
+    return None
 
 
 def replacement_lookup(g: Graph, v: str) -> list[Version]:
@@ -42,7 +42,6 @@ def methodsAt(g: Graph, cls_ast, v):
         ])
     ]
     return methods
-
 
 def method_lookup(g, cls_ast, m, v: str):
     version = g[v]
@@ -75,14 +74,28 @@ def method_lookup(g, cls_ast, m, v: str):
         return um[0]
     return None
 
+def base(g, cls_ast, v):
+    found = False
+    for fun in ast.walk(cls_ast):
+        if isinstance(fun, ast.FunctionDef) and get_at(fun) == v:
+            for stmt in ast.walk(fun):
+                if isinstance(stmt, ast.Attribute) and isinstance(stmt.value, ast.Name) and stmt.value.id == 'self':
+                    found = True
+    if found:
+        return v
+    for p in g[v].upgrades:
+        back = base(g, cls_ast, p)
+        if back is not None:
+            return back
+    return None
+
 
 def fields_lookup(g, cls_ast, v):
     # local search
-    fields = []
-    init = method_lookup(g, cls_ast, '__init__', v)
-    for expr in init.body:
-        if isinstance(expr, ast.Assign):
-            if isinstance(expr.targets[0], ast.Attribute):
-                if expr.targets[0].value.id == 'self':
-                    fields.append(expr.targets[0].attr)
+    fields = set()
+    for node in ast.walk(cls_ast):
+        if isinstance(node, ast.FunctionDef) and get_at(node) == base(g, cls_ast, v):
+            for stmt in ast.walk(node):
+                if isinstance(stmt, ast.Attribute) and isinstance(stmt.value, ast.Name) and stmt.value.id == 'self':
+                    fields.add(stmt.attr)
     return fields

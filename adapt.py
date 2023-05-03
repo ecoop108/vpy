@@ -14,19 +14,6 @@ def graph(cls_ast: ast.ClassDef) -> Graph:
     })
 
 
-def remove_decorators(node):
-    exclude = ['at', 'version', 'lens']
-    new_decorators = []
-    for decorator in node.decorator_list:
-        if isinstance(decorator, ast.Call) and isinstance(
-                decorator.func, ast.Name) and decorator.func.id in exclude:
-            pass
-        else:
-            new_decorators.append(decorator)
-    node.decorator_list = new_decorators
-    return node
-
-
 def tr_lens(node, lens):
     """
     Takes an AST node of a function and changes all expressions in the body of the form self.x
@@ -51,7 +38,7 @@ def tr_lens(node, lens):
             return node
 
     LensTransformer().visit(node)
-    return remove_decorators(node)
+    return node
 
 
 def tr_class(cls: Type, v: str):
@@ -80,12 +67,29 @@ def tr_class(cls: Type, v: str):
             mver = get_at(node)
             if mver != target:
                 return None
-            lens_node, lens = lookup.lens_lookup(g, v, mver, cls)
-            if lens is not None:
-                node = tr_lens(node, lens_node.name)
-                self.parent.body.append(remove_decorators(lens_node))
-            return remove_decorators(node)
+            fields = lookup.fields_lookup(g, cls_ast, target)
+            lenses = [r for f in fields if (r:=lookup.lens_lookup(g, v, target, f, cls)) is not None]
+            if lenses != []:
+                for lens_node, lens in lenses:
+                    node = tr_lens(node, lens_node.name)
+                    self.parent.body.append(lens_node)
+            return node
 
     ClassTransformer().visit(cls_ast)
     cls_ast.name += '_' + v
     return remove_decorators(cls_ast)
+
+def remove_decorators(node):
+    exclude = ['at', 'version', 'lens']
+    for child in ast.walk(node):
+        new_decorators = []
+        if isinstance(child, ast.FunctionDef) or isinstance(child, ast.ClassDef):
+            for decorator in child.decorator_list:
+                if isinstance(decorator, ast.Call) and isinstance(
+                        decorator.func, ast.Name) and decorator.func.id in exclude:
+                    pass
+                else:
+                    new_decorators.append(decorator)
+            child.decorator_list = new_decorators
+    return node
+
