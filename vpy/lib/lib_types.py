@@ -1,8 +1,16 @@
+from ast import FunctionDef
 from copy import deepcopy
 from dataclasses import InitVar, dataclass, field
-from typing import NewType
+from typing import NewType, NamedTuple, Callable
+
+
+class Lens(NamedTuple):
+    put: FunctionDef
+    get: FunctionDef
+
 
 VersionIdentifier = NewType('VersionIdentifier', str)
+
 
 @dataclass
 class Version():
@@ -18,9 +26,13 @@ class Version():
             if k.arg == 'name':
                 self.name = VersionIdentifier(k.value.value)
             if k.arg == 'upgrades':
-                self.upgrades = [VersionIdentifier(v.value) for v in k.value.elts]
+                self.upgrades = [
+                    VersionIdentifier(v.value) for v in k.value.elts
+                ]
             if k.arg == 'replaces':
-                self.replaces = [VersionIdentifier(v.value) for v in k.value.elts]
+                self.replaces = [
+                    VersionIdentifier(v.value) for v in k.value.elts
+                ]
 
 
 class Graph(dict):

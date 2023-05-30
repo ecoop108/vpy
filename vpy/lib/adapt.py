@@ -2,20 +2,13 @@ import ast
 from ast import ClassDef
 import inspect
 from typing import Type, cast
-from vpy.lib.utils import get_at, remove_decorators
+from vpy.lib.utils import get_at, is_lens, remove_decorators, graph
 
 import vpy.lib.lookup as lookup
-from vpy.lib.lib_types import Graph, Version
+from vpy.lib.lib_types import Lens, VersionIdentifier
 
 
-def graph(cls_ast: ClassDef) -> Graph:
-    return Graph({
-        v.name: v
-        for v in [Version(d.keywords) for d in cls_ast.decorator_list]
-    })
-
-
-def tr_lens(parent, node, lenses):
+def tr_lens(parent, node, lenses: dict[str, Lens]):
     """
     Takes an AST node of a function and changes all expressions in the body of the form self.x
     to be of the form self.lens_x()
@@ -23,11 +16,29 @@ def tr_lens(parent, node, lenses):
 
     class LensTransformer(ast.NodeTransformer):
 
+        def visit_Assign(self, node):
+            if isinstance(
+                    node.targets[0],
+                    ast.Attribute) and node.targets[0].value.id == 'self':
+                lens_node = lenses[node.targets[0].attr].put
+                self_attr = ast.Attribute(value=ast.Name(id='self',
+                                                         ctx=ast.Load()),
+                                          attr=lens_node.name,
+                                          ctx=ast.Load())
+                self_call = ast.Call(func=self_attr,
+                                     args=[node.value],
+                                     keywords=[])
+                if not any(e for e in parent.body if isinstance(
+                        e, ast.FunctionDef) and e.name == lens_node.name):
+                    parent.body.append(lens_node)
+                return ast.Expr(value=self_call)
+            return node
+
         def visit_Attribute(self, node):
             if isinstance(node.value, ast.Name) and node.value.id == 'self':
                 if isinstance(node.ctx, ast.Load):
                     # Create the attribute node for "self.lens"
-                    lens_node, lens_function = lenses[node.attr]
+                    lens_node = lenses[node.attr].get
                     self_attr = ast.Attribute(value=ast.Name(id='self',
                                                              ctx=ast.Load()),
                                               attr=lens_node.name,
@@ -45,9 +56,10 @@ def tr_lens(parent, node, lenses):
     return node
 
 
-def tr_class(mod, cls: Type, v: str) -> ClassDef:
+def tr_class(mod, cls: Type, v: VersionIdentifier) -> ClassDef:
     src = inspect.getsource(cls)
     cls_ast: ast.ClassDef = cast(ClassDef, ast.parse(src).body[0])
+    cls_ast_orig = cast(ClassDef, ast.parse(src).body[0])
     g = graph(cls_ast)
 
     class ClassTransformer(ast.NodeTransformer):
@@ -59,7 +71,10 @@ def tr_class(mod, cls: Type, v: str) -> ClassDef:
 
         def visit_ClassDef(self, node):
             self.parent = node
-            for idx, expr in enumerate(list(node.body)):
+            for expr in list(node.body):
+                if is_lens(expr):
+                    node.body.remove(expr)
+                    continue
                 new = self.visit(expr)
                 if new is None:
                     node.body.remove(expr)
@@ -76,7 +91,7 @@ def tr_class(mod, cls: Type, v: str) -> ClassDef:
             if mver != target:
                 return None
             fields = lookup.fields_lookup(g, cls_ast, target)
-            lenses = lookup.lens_lookup(g, v, target, cls)
+            lenses = lookup.lens_lookup(g, v, target, cls_ast_orig)
             if lenses is not None:
                 node = tr_lens(self.parent, node, lenses)
             return node
@@ -85,5 +100,5 @@ def tr_class(mod, cls: Type, v: str) -> ClassDef:
     cls_ast.name += '_' + v
     if cls_ast.body == []:
         cls_ast.body.append(ast.Pass())
+
     return remove_decorators(cls_ast)
-    

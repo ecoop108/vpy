@@ -1,38 +1,46 @@
 import ast
 from ast import FunctionDef, ClassDef
 from typing import Callable, Optional, cast
-import inspect
-from vpy.lib.lib_types import Graph, VersionIdentifier
+from vpy.lib.lib_types import Graph, Lens, VersionIdentifier
 from vpy.lib.utils import is_lens, get_at
 
 
-def lens_lookup(g: Graph, v: VersionIdentifier, t,
-                cls) -> Optional[dict[str, tuple[ast.FunctionDef, Callable]]]:
-    src = inspect.getsource(cls)
-    cls_ast = cast(ClassDef, ast.parse(src).body[0])
-    lenses = []
+def lens_at(cls_ast: ClassDef,
+            v: VersionIdentifier) -> dict[VersionIdentifier, dict[str, Lens]]:
+    lenses = {}
+    lenses_get = {}
+    lenses_put = {}
     for method in cls_ast.body:
         if isinstance(method, FunctionDef):
             for dec in method.decorator_list:
-                if dec.func.id == 'lens' and dec.args[
-                        0].value == v and dec.args[1].value == t:
-                    lenses.append((method, dec.args[2].value))
-    if len(lenses) > 0:
-        return {
-            field: (node, getattr(cls, node.name))
-            for node, field in lenses
-        }
+                if dec.func.id == 'get' and dec.args[0].value == v:
+                    lenses_get[(dec.args[1].value, dec.args[2].value)] = method
+                if dec.func.id == 'put' and dec.args[0].value == v:
+                    lenses_put[(dec.args[1].value, dec.args[2].value)] = method
+    for ((target, field), method) in lenses_get.items():
+        if target not in lenses:
+            lenses[target] = {}
+        lenses[target][field] = Lens(put=lenses_put.get((target, field), None),
+                                     get=method)
+    return lenses
+
+
+def lens_lookup(g: Graph, v: VersionIdentifier, t: VersionIdentifier,
+                cls_ast: ClassDef) -> Optional[dict[str, Lens]]:
+    lens = lens_at(cls_ast=cls_ast, v=v)
+    # TODO: type check this
+    if t in lens:
+        return lens[t]
     return None
 
 
 def methodsAt(g: Graph, cls_ast, v: VersionIdentifier) -> list[FunctionDef]:
-    methods = [
+    return [
         m for m in cls_ast.body if isinstance(m, ast.FunctionDef) and any([
             d.func.id == 'at' and d.args[0].value == v and (not is_lens(m))
             for d in m.decorator_list
         ])
     ]
-    return methods
 
 
 def replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
@@ -78,7 +86,6 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m,
         return rm
 
     # local search
-    methods = methodsAt(g, cls_ast, v)
     lm = local_method_lookup(g, cls_ast, m, v)
     if lm is not None:
         return lm
@@ -94,14 +101,16 @@ def base(g, cls_ast: ClassDef,
          v: VersionIdentifier) -> Optional[VersionIdentifier]:
     found = False
     for fun in ast.walk(cls_ast):
-        if isinstance(fun, ast.FunctionDef) and get_at(fun) == v:
+        if isinstance(
+                fun,
+                ast.FunctionDef) and (not is_lens(fun)) and get_at(fun) == v:
             for stmt in ast.walk(fun):
                 if isinstance(stmt, ast.Attribute) and isinstance(
                         stmt.value, ast.Name) and stmt.value.id == 'self':
                     found = True
     if found:
         return v
-    for p in g[v].upgrades:
+    for p in (g[v].upgrades + g[v].replaces):
         back = base(g, cls_ast, p)
         if back is not None:
             return back
@@ -112,8 +121,8 @@ def fields_lookup(g, cls_ast: ClassDef, v: VersionIdentifier) -> set[str]:
     # local search
     fields = set()
     for node in ast.walk(cls_ast):
-        if isinstance(node, ast.FunctionDef) and get_at(node) == base(
-                g, cls_ast, v):
+        if isinstance(node, ast.FunctionDef) and (
+                not is_lens(node)) and get_at(node) == base(g, cls_ast, v):
             for stmt in ast.walk(node):
                 if isinstance(stmt, ast.Attribute) and isinstance(
                         stmt.value, ast.Name) and stmt.value.id == 'self':

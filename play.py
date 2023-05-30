@@ -1,4 +1,5 @@
-from vpy.decorators import version, at, run, lens
+from vpy.decorators import version, at, run, get, put
+
 
 @version(name='start')
 @version(name='full', replaces=['start'])
@@ -13,23 +14,28 @@ class Name:
     def __init__(self, full: str):
         self.full_name: str = full
 
-    @at('full')
-    @lens('full', 'start', 'first')
-    def lens_first(self) -> str:
+    @get('full', 'start', 'first')
+    def lens_get_first(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[0]
         return self.full_name
 
-    @at('full')
-    @lens('full', 'start', 'last')
-    def lens_last(self) -> str:
+    @get('full', 'start', 'last')
+    def lens_get_last(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[1]
         return ''
 
-    @at('start')
-    @lens('start', 'full', 'full_name')
-    def lens_full(self):
+    @put('full', 'start', 'first')
+    def lens_put_first(self, value):
+        self.full_name = ' '.join([value, self.lens_get_last()])
+
+    @put('full', 'start', 'last')
+    def lens_put_last(self, value):
+        self.full_name = ' '.join([value, self.lens_get_first()])
+
+    @get('start', 'full', 'full_name')
+    def lens_get_full(self):
         return f"{self.first} {self.last}"
 
     @at('start')
@@ -39,10 +45,9 @@ class Name:
     @at('full')
     def get(self):
         return self.full_name
-    
+
     @at('start')
     def set_last(self, last):
-        print(self.last)
         self.last = last
 
 
@@ -91,6 +96,7 @@ def a_main():
     ctr.inc()
     ctr.dec()
     print(ctr.counter)
+
 
 if __name__ == "__main__":
     name_main()

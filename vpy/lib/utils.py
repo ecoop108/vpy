@@ -1,17 +1,38 @@
 import ast
+import inspect
 from typing import TypeVar
+from vpy.lib.lib_types import Graph, Version
+
+
+def graph(cls_ast: ast.ClassDef):
+    return Graph({
+        v.name: v
+        for v in [Version(d.keywords) for d in cls_ast.decorator_list]
+    })
+
+
+def parse_class(cls) -> tuple[ast.ClassDef, Graph]:
+    src = inspect.getsource(cls)
+    cls_ast: ast.ClassDef = ast.parse(src).body[0]
+    g = graph(cls_ast)
+    return (cls_ast, g)
+
 
 def is_lens(node):
-    return any(d.func.id == 'lens' for d in node.decorator_list)
+    return any(d.func.id == 'get' or d.func.id == 'put'
+               for d in node.decorator_list)
 
 
 def get_at(node):
     return [d for d in node.decorator_list
             if d.func.id == 'at'][0].args[0].value
 
+
 T = TypeVar('T', bound=ast.AST)
+
+
 def remove_decorators(node: T) -> T:
-    exclude = ['at', 'version', 'lens', 'run']
+    exclude = ['at', 'version', 'get', 'put', 'run']
     for child in ast.walk(node):
         new_decorators = []
         if isinstance(child, ast.FunctionDef) or isinstance(

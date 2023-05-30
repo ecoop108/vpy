@@ -2,7 +2,20 @@ import functools
 import vpy.lib.runtime as r
 
 
-def lens(frm, to, field):
+def get(frm, to, field):
+
+    def decorator_version(cl):
+
+        @functools.wraps(cl)
+        def wrapper_version(*args, **kwargs):
+            return cl(*args, **kwargs)
+
+        return wrapper_version
+
+    return decorator_version
+
+
+def put(frm, to, field):
 
     def decorator_version(cl):
 
@@ -43,6 +56,7 @@ def run(v):
         @functools.wraps(f)
         def wrapper_run(*args, **kwargs):
             return r.run(f, v, *args, **kwargs)
+
         return wrapper_run
 
     return decorator_run

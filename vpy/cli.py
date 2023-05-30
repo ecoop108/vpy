@@ -1,7 +1,7 @@
 import argparse
 import logging
 import os
-from lib.adapt import graph
+from lib.utils import graph
 from lib.lib_types import VersionIdentifier
 import inspect
 import ast
@@ -10,7 +10,7 @@ from lib.slice import rw_module
 
 
 def list_versions(file) -> set[VersionIdentifier]:
-    
+
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -22,11 +22,12 @@ def list_versions(file) -> set[VersionIdentifier]:
     return versions
 
 
-def target(file, version):
+def target(file, version: VersionIdentifier):
     if version not in list_versions(file):
         exit(f"Invalid target {version}")
-    
-    spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
+
+    spec = importlib.util.spec_from_file_location(
+        os.path.basename(file)[:-3], file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     slices = rw_module(module, version)
@@ -59,5 +60,5 @@ def cli_main():
         exit()
 
     if args.target:
-        target(args.input, args.target)
+        target(args.input, VersionIdentifier(args.target))
         exit()
