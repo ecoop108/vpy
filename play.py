@@ -1,16 +1,17 @@
-from vfj import version, at, run, lens
+from vpy.decorators import version, at, run, lens
+
 @version(name='start')
 @version(name='full', replaces=['start'])
 class Name:
 
     @at('start')
-    def __init__(self, first, last):
-        self.first = first
-        self.last = last
+    def __init__(self, first: str, last: str):
+        self.first: str = first
+        self.last: str = last
 
     @at('full')
-    def __init__(self, full):
-        self.full_name = full
+    def __init__(self, full: str):
+        self.full_name: str = full
 
     @at('full')
     @lens('full', 'start', 'first')
@@ -35,61 +36,62 @@ class Name:
     def reverse(self):
         return self.last + ", " + self.first
 
-    @at('start')
-    def aa(self):
-        return self.last + "xxx" + self.first
-
     @at('full')
     def get(self):
         return self.full_name
+    
+    @at('start')
+    def set_last(self, last):
+        print(self.last)
+        self.last = last
 
 
 @run('full')
-def main():
+def name_main():
+    print(1)
     obj = Name('Rolling Stones')
     print(obj.get())
     print(obj.reverse())
-    b()
+    obj.set_last("Stoned")
+    print(obj.get())
+    name_switch_context()
+
 
 @run('start')
-def b():
-    obj = Name("abc", "def")
+def name_switch_context():
+    obj = Name("Bob", "Dylan")
     print(obj.get())
 
+
+@version(name='start')
+@version(name='bugfix', replaces=['start'])
+@version(name='dec', upgrades=['start'])
+class A:
+
+    @at('start')
+    def __init__(self, counter):
+        self.counter = counter
+
+    @at('start')
+    def inc(self):
+        self.counter += 2
+
+    @at('bugfix')
+    def inc(self):
+        self.counter += 1
+
+    @at('dec')
+    def dec(self):
+        self.counter -= 1
+
+
+@run('dec')
+def a_main():
+    ctr = A(4)
+    ctr.inc()
+    ctr.dec()
+    print(ctr.counter)
+
 if __name__ == "__main__":
-    main()
-
-
-
-# from vfj import version, at, run
-# from slice import slice
-# from ast import unparse
-
-
-# # @version(name='start')
-# # @version(name='bugfix', replaces=['start'])
-# # @version(name='dec', upgrades=['start'])
-# # class A:
-
-# #     @at('start')
-# #     def __init__(self, counter):
-# #         self.counter = counter
-
-# #     @at('start')
-# #     def inc(self):
-# #         self.counter += 2
-
-# #     @at('bugfix')
-# #     def inc(self):
-# #         self.counter += 1
-
-# #     @at('dec')
-# #     def dec(self):
-# #         self.counter -= 1
-
-# # @run('dec')
-# # def main():
-# #     ctr = A(4)
-# #     ctr.inc()
-# #     ctr.dec()
-# #     print(ctr.counter)
+    name_main()
+    # a_main()
