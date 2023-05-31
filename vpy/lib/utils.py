@@ -34,7 +34,7 @@ T = TypeVar('T', bound=ast.AST)
 
 
 def remove_decorators(node: T) -> T:
-    exclude = ['at', 'version', 'run']
+    exclude = ['at', 'version', 'run', 'get', 'put']
     for child in ast.walk(node):
         new_decorators = []
         if isinstance(child, ast.FunctionDef) or isinstance(
@@ -42,7 +42,6 @@ def remove_decorators(node: T) -> T:
             for decorator in child.decorator_list:
                 if isinstance(decorator, ast.Call) and isinstance(
                         decorator.func, ast.Name):
-                    print(decorator.func.id, decorator.func.id in exclude)
                     if decorator.func.id in exclude:
                         continue
                     else:

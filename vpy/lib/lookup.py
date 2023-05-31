@@ -123,7 +123,10 @@ def fields_lookup(g, cls_ast: ClassDef, v: VersionIdentifier) -> set[str]:
         if isinstance(node, ast.FunctionDef) and (
                 not is_lens(node)) and get_at(node) == base(g, cls_ast, v):
             for stmt in ast.walk(node):
-                if isinstance(stmt, ast.Attribute) and isinstance(
-                        stmt.value, ast.Name) and stmt.value.id == 'self':
-                    fields.add(stmt.attr)
+                if isinstance(stmt, ast.Assign):
+                    for target in stmt.targets:
+                        if isinstance(
+                                target,
+                                ast.Attribute) and target.value.id == 'self':
+                            fields.add(target.attr)
     return fields

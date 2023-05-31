@@ -52,8 +52,8 @@ class Name:
         # self.last = self.lens_last(val)
 
     @at('start')
-    def set_last(self, last):
-        self.last = last
+    def set_last(self, some_name):
+        self.last = self.first + "!" + some_name
         # self.full_name = self.lens_full(self.lens_first(), last)
 
 
