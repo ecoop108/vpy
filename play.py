@@ -15,28 +15,24 @@ class Name:
         self.full_name: str = full
 
     @get('full', 'start', 'first')
-    def lens_get_first(self) -> str:
+    def lens_first(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[0]
         return self.full_name
 
     @get('full', 'start', 'last')
-    def lens_get_last(self) -> str:
+    def lens_last(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[1]
         return ''
 
-    @put('full', 'start', 'first')
-    def lens_put_first(self, value):
-        self.full_name = ' '.join([value, self.lens_get_last()])
-
-    @put('full', 'start', 'last')
-    def lens_put_last(self, value):
-        self.full_name = ' '.join([value, self.lens_get_first()])
-
     @get('start', 'full', 'full_name')
-    def lens_get_full(self):
+    def lens_full(self):
         return f"{self.first} {self.last}"
+
+    # @put('start', 'full', 'full_name')
+    # def lens_full(self, first, last):
+    #     return f"{first} {last}"
 
     @at('start')
     def reverse(self):
@@ -46,14 +42,23 @@ class Name:
     def get(self):
         return self.full_name
 
+    @at('full')
+    def set_name(self, val):
+        self.full_name = val
+        # check lenses from full -> start
+        # select all lenses that have self.full_name in their body
+        # update fields with selected lenses
+        # self.first = self.lens_first(val)
+        # self.last = self.lens_last(val)
+
     @at('start')
     def set_last(self, last):
         self.last = last
+        # self.full_name = self.lens_full(self.lens_first(), last)
 
 
 @run('full')
 def name_main():
-    print(1)
     obj = Name('Rolling Stones')
     print(obj.get())
     print(obj.reverse())

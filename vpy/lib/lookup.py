@@ -1,6 +1,6 @@
 import ast
 from ast import FunctionDef, ClassDef
-from typing import Callable, Optional, cast
+from typing import Optional
 from vpy.lib.lib_types import Graph, Lens, VersionIdentifier
 from vpy.lib.utils import is_lens, get_at
 
@@ -28,7 +28,6 @@ def lens_at(cls_ast: ClassDef,
 def lens_lookup(g: Graph, v: VersionIdentifier, t: VersionIdentifier,
                 cls_ast: ClassDef) -> Optional[dict[str, Lens]]:
     lens = lens_at(cls_ast=cls_ast, v=v)
-    # TODO: type check this
     if t in lens:
         return lens[t]
     return None

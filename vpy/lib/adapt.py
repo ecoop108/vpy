@@ -1,11 +1,42 @@
 import ast
-from ast import ClassDef
+from ast import ClassDef, FunctionDef, Attribute
+import copy
 import inspect
 from typing import Type, cast
 from vpy.lib.utils import get_at, is_lens, remove_decorators, graph
 
 import vpy.lib.lookup as lookup
 from vpy.lib.lib_types import Lens, VersionIdentifier
+
+
+def tr_put_lens(node: ClassDef):
+
+    class PutLens(ast.NodeTransformer):
+
+        def visit_ClassDef(self, node: ClassDef) -> ClassDef:
+            for body_item in list(node.body):
+                if isinstance(body_item,
+                              ast.FunctionDef) and is_lens(body_item):
+                    # Create a new method with the modified name
+                    new_method = copy.deepcopy(body_item)
+                    new_method.name = body_item.name
+                    # Modify the @get decorator
+                    for dec in new_method.decorator_list:
+                        if isinstance(dec, ast.Call) and isinstance(
+                                dec.func, ast.Name) and dec.func.id == 'get':
+                            dec.func.id = 'put'
+                    # Add the new method to the class body
+                    node.body.append(new_method)
+            return node
+
+        # def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef:
+        #     return super().visit_FunctionDef(node)
+
+        # def visit_Attribute(self, node: Attribute) -> Attribute:
+        #     return super().visit_Attribute(node)
+
+    node = PutLens().visit(node)
+    return node
 
 
 def tr_lens(parent, node, lenses: dict[str, Lens]):
@@ -56,10 +87,34 @@ def tr_lens(parent, node, lenses: dict[str, Lens]):
     return node
 
 
+def tr_select_methods(g, node, v) -> ClassDef:
+
+    class TransformerSelectMethods(ast.NodeTransformer):
+
+        def visit_ClassDef(self, node: ClassDef) -> ClassDef:
+            for expr in list(node.body):
+                if not isinstance(expr, FunctionDef):
+                    continue
+                if is_lens(expr):
+                    # node.body.remove(expr)
+                    continue
+                mdef = lookup.method_lookup(g, node, expr.name, v)
+                if mdef is None:
+                    node.body.remove(expr)
+                    continue
+                target = get_at(mdef)
+                mver = get_at(expr)
+                if mver != target:
+                    node.body.remove(expr)
+            return node
+
+    node = TransformerSelectMethods().visit(node)
+    return node
+
+
 def tr_class(mod, cls: Type, v: VersionIdentifier) -> ClassDef:
     src = inspect.getsource(cls)
     cls_ast: ast.ClassDef = cast(ClassDef, ast.parse(src).body[0])
-    cls_ast_orig = cast(ClassDef, ast.parse(src).body[0])
     g = graph(cls_ast)
 
     class ClassTransformer(ast.NodeTransformer):
@@ -73,29 +128,21 @@ def tr_class(mod, cls: Type, v: VersionIdentifier) -> ClassDef:
             self.parent = node
             for expr in list(node.body):
                 if is_lens(expr):
-                    node.body.remove(expr)
                     continue
-                new = self.visit(expr)
-                if new is None:
-                    node.body.remove(expr)
-                else:
-                    expr = new
+                expr = self.visit(expr)
             return node
 
         def visit_FunctionDef(self, node):
             mdef = lookup.method_lookup(g, cls_ast, node.name, v)
-            if mdef is None:
-                return None
             target = get_at(mdef)
-            mver = get_at(node)
-            if mver != target:
-                return None
-            fields = lookup.fields_lookup(g, cls_ast, target)
-            lenses = lookup.lens_lookup(g, v, target, cls_ast_orig)
+            # fields = lookup.fields_lookup(g, cls_ast, target)
+            lenses = lookup.lens_lookup(g, v, target, cls_ast)
             if lenses is not None:
                 node = tr_lens(self.parent, node, lenses)
             return node
 
+    cls_ast = tr_select_methods(g, cls_ast, v)
+    cls_ast = tr_put_lens(cls_ast)
     ClassTransformer().visit(cls_ast)
     cls_ast.name += '_' + v
     if cls_ast.body == []:
