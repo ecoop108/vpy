@@ -8,20 +8,18 @@ from vpy.lib.utils import is_lens, get_at
 def lens_at(cls_ast: ClassDef,
             v: VersionIdentifier) -> dict[VersionIdentifier, dict[str, Lens]]:
     lenses = {}
-    lenses_get = {}
-    lenses_put = {}
     for method in cls_ast.body:
         if isinstance(method, FunctionDef):
             for dec in method.decorator_list:
-                if dec.func.id == 'get' and dec.args[0].value == v:
-                    lenses_get[(dec.args[1].value, dec.args[2].value)] = method
-                if dec.func.id == 'put' and dec.args[0].value == v:
-                    lenses_put[(dec.args[1].value, dec.args[2].value)] = method
-    for ((target, field), method) in lenses_get.items():
-        if target not in lenses:
-            lenses[target] = {}
-        lenses[target][field] = Lens(put=lenses_put.get((target, field), None),
-                                     get=method)
+                if isinstance(dec, ast.Call):
+                    if isinstance(
+                            dec.func, ast.Name
+                    ) and dec.func.id == 'get' and dec.args[0].value == v:
+                        target = dec.args[1].value
+                        field = dec.args[2].value
+                        if target not in lenses:
+                            lenses[target] = {}
+                        lenses[target][field] = method
     return lenses
 
 
@@ -123,6 +121,13 @@ def fields_lookup(g, cls_ast: ClassDef, v: VersionIdentifier) -> set[str]:
         if isinstance(node, ast.FunctionDef) and (
                 not is_lens(node)) and get_at(node) == base(g, cls_ast, v):
             for stmt in ast.walk(node):
+                if isinstance(stmt, ast.AugAssign) or isinstance(
+                        stmt, ast.AnnAssign):
+                    if isinstance(stmt.target, ast.Attribute) and isinstance(
+                            stmt.target.value,
+                            ast.Name) and stmt.target.value.id == 'self':
+                        fields.add(stmt.target.attr)
+
                 if isinstance(stmt, ast.Assign):
                     for target in stmt.targets:
                         if isinstance(
