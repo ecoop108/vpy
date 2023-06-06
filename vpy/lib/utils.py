@@ -4,6 +4,23 @@ from typing import TypeVar
 from vpy.lib.lib_types import Graph, Version
 
 
+def has_put_lens(cls_node: ast.ClassDef,
+                 get_lens_node: ast.FunctionDef) -> bool:
+    for e in cls_node.body:
+        if isinstance(e, ast.FunctionDef) and e.name == get_lens_node.name:
+            return any(
+                isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
+                    d.func.id == 'put') for d in e.decorator_list)
+    return False
+
+
+# TODO: fix for nested attributes
+def is_self_attribute(node: ast.Attribute) -> bool:
+    if isinstance(node.value, ast.Name) and node.value.id == 'self':
+        return True
+    return False
+
+
 def graph(cls_ast: ast.ClassDef):
     return Graph({
         v.name: v
@@ -18,23 +35,25 @@ def parse_class(cls) -> tuple[ast.ClassDef, Graph]:
     return (cls_ast, g)
 
 
-def is_lens(node):
+def is_lens(node: ast.FunctionDef):
     return any(
         isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
             d.func.id == 'get' or d.func.id == 'put')
         for d in node.decorator_list)
 
 
-def get_at(node):
-    return [d for d in node.decorator_list
-            if d.func.id == 'at'][0].args[0].value
+def get_at(node: ast.FunctionDef):
+    return [
+        d for d in node.decorator_list if isinstance(d, ast.Call)
+        and isinstance(d.func, ast.Name) and d.func.id in ['get', 'at']
+    ][0].args[0].value
 
 
 T = TypeVar('T', bound=ast.AST)
 
 
 def remove_decorators(node: T) -> T:
-    exclude = ['at', 'version', 'run', 'get', 'put']
+    remove = ['at', 'version', 'run', 'get', 'put']
     for child in ast.walk(node):
         new_decorators = []
         if isinstance(child, ast.FunctionDef) or isinstance(
@@ -42,7 +61,7 @@ def remove_decorators(node: T) -> T:
             for decorator in child.decorator_list:
                 if isinstance(decorator, ast.Call) and isinstance(
                         decorator.func, ast.Name):
-                    if decorator.func.id in exclude:
+                    if decorator.func.id in remove:
                         continue
                     else:
                         new_decorators.append(decorator)

@@ -1,32 +1,35 @@
 import ast
 from ast import Attribute, ClassDef, FunctionDef, Name, arg, keyword
 import copy
-import inspect
-from typing import Type, cast
-from vpy.lib.utils import get_at, is_lens, remove_decorators, graph
+from typing import Type
+from vpy.lib.utils import get_at, has_put_lens, is_lens, is_self_attribute, parse_class, remove_decorators
 
 import vpy.lib.lookup as lookup
 from vpy.lib.lib_types import Graph, VersionIdentifier
 
 
-def tr_put_lens(node: FunctionDef):
+def tr_put_lens(node: FunctionDef, fields):
+    """Takes an AST node of a get lens and returns a put lens by replacing all
+    fields of the form self.x with x and adding x as an argument to the lens.
+    """
 
     class FieldCollector(ast.NodeVisitor):
 
-        def __init__(self):
-            self.fields = set()
+        def __init__(self, fields):
+            self.fields = fields
+            self.references = set()
 
         def visit_Attribute(self, node):
-            if isinstance(node.value, ast.Name) and node.value.id == 'self':
-                if isinstance(node.ctx, ast.Load):
-                    self.fields.add(node.attr)
+            if is_self_attribute(node) and node.attr in self.fields:
+                self.references.add(node.attr)
+            self.visit(node.value)
 
     class PutLens(ast.NodeTransformer):
 
         def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef:
-            field_col = FieldCollector()
-            field_col.visit(node)
-            for f in field_col.fields:
+            visitor = FieldCollector(fields)
+            visitor.visit(node)
+            for f in visitor.references:
                 node.args.kwonlyargs.append(arg(arg=f))
                 node.args.kw_defaults.append(None)
             for expr in node.body:
@@ -34,7 +37,7 @@ def tr_put_lens(node: FunctionDef):
             return node
 
         def visit_Attribute(self, node) -> Attribute | Name:
-            if isinstance(node.value, ast.Name) and node.value.id == 'self':
+            if is_self_attribute(node) and node.attr in fields:
                 if isinstance(node.ctx, ast.Load):
                     node = Name(id=node.attr, ctx=ast.Load())
             else:
@@ -43,12 +46,10 @@ def tr_put_lens(node: FunctionDef):
 
     new_method = copy.deepcopy(node)
     new_method.name = node.name
-    # Modify the @get decorator
     for dec in new_method.decorator_list:
         if isinstance(dec, ast.Call) and isinstance(
                 dec.func, ast.Name) and dec.func.id == 'get':
             dec.func.id = 'put'
-    # Add the new method to the class body
     new_method = PutLens().visit(new_method)
     return new_method
 
@@ -61,34 +62,27 @@ def tr_lens(cls_node: ClassDef, tr_cls_node: ClassDef, node: FunctionDef,
     """
 
     def check_field_in_function(node, field):
-        # Traverse the AST of the function definition
         for child_node in ast.walk(node):
             if isinstance(child_node, ast.Attribute):
-                if isinstance(child_node.value,
-                              ast.Name) and child_node.value.id == 'self':
-                    if child_node.attr == field:
-                        return True
+                if is_self_attribute(child_node) and child_node.attr == field:
+                    return True
         return False
 
     class LensTransformer(ast.NodeTransformer):
 
-        def visit_Assign(self, node):
-            for target in node.targets:
-                if isinstance(target, ast.Attribute) and isinstance(
-                        target.value, ast.Name) and target.value.id == 'self':
-                    lenses = lookup.lens_lookup(g, t, v, tr_cls_node)
-                    exprs = []
-                    #TODO: fix field lookup
-                    t_fields = lookup.fields_lookup(g, cls_node, t)
-                    for field in lenses:
-                        if check_field_in_function(lenses[field], target.attr):
-                            lens_node = lenses[field]
-                            # TODO: Assign field in v to self_call
-                            self_attr = ast.Attribute(value=ast.Name(
-                                id='self', ctx=ast.Load()),
-                                                      attr=lens_node.name,
-                                                      ctx=ast.Load())
-                            rw_value = self.visit(node.value)
+        def rw_lens(self, target: ast.Attribute,
+                    value: ast.expr | None) -> list[ast.Expr]:
+            exprs = []
+            if lenses_t_v is not None:
+                for field in lenses_t_v:
+                    if check_field_in_function(lenses_t_v[field], target.attr):
+                        lens_node = lenses_t_v[field]
+                        self_attr = ast.Attribute(value=ast.Name(
+                            id='self', ctx=ast.Load()),
+                                                  attr=lens_node.name,
+                                                  ctx=ast.Load())
+                        if value:
+                            rw_value = self.visit(value)
                             self_call = ast.Call(
                                 func=self_attr,
                                 args=[],
@@ -98,44 +92,90 @@ def tr_lens(cls_node: ClassDef, tr_cls_node: ClassDef, node: FunctionDef,
                                     keyword(arg=f,
                                             value=self.visit(
                                                 ast.parse(f'self.{f}')))
-                                    for f in t_fields if f != target.attr
+                                    for f in fields_t if f != target.attr
                                 ])
 
-                            # if not any(e for e in tr_cls_node.body
-                            #            if isinstance(e, FunctionDef)
-                            #            and e.name == lens_node.name):
-                            put_lens = tr_put_lens(lens_node)
-                            tr_cls_node.body.append(put_lens)
+                            if not has_put_lens(tr_cls_node, lens_node):
+                                put_lens = tr_put_lens(lens_node, fields_t)
+                                tr_cls_node.body.append(put_lens)
+                                tr_cls_node.body.remove(lens_node)
                             lens_target = Attribute(value=ast.Name(
                                 id='self', ctx=ast.Store()),
                                                     attr=field)
                             lens_assign = ast.Assign(targets=[lens_target],
                                                      value=self_call)
-                            return ast.Expr(value=self.visit(lens_assign))
-                    #         exprs.append(lens_assign)
-                    # print(exprs)
-                    # return [ast.Expr(value=e) for e in exprs]
+                            exprs.append(lens_assign)
+            return [ast.Expr(value=e) for e in exprs]
+
+        def visit_AugAssign(self, node: ast.AugAssign):
+            if isinstance(node.target, ast.Attribute) and is_self_attribute(
+                    node.target) and node.target.attr in fields_t:
+                unfold = ast.BinOp(left=node.target,
+                                   right=node.value,
+                                   op=node.op)
+                assign = ast.Assign(targets=[node.target], value=unfold)
+                print(node.target.ctx)
+                print(ast.unparse(ast.fix_missing_locations(node.target)))
+                print(ast.unparse(ast.fix_missing_locations(unfold)))
+                print(2233)
+                print(ast.unparse(ast.fix_missing_locations(assign)))
+                print(2222)
+                return self.rw_lens(node.target, assign.value)
+            if node.value:
+                node.value = self.visit(node.value)
             return node
+
+        def visit_AnnAssign(self, node: ast.AnnAssign):
+            if isinstance(node.target, ast.Attribute) and is_self_attribute(
+                    node.target) and node.target.attr in fields_t:
+                return self.rw_lens(node.target, node.value)
+            if node.value:
+                node.value = self.visit(node.value)
+            return node
+
+        def visit_Assign(self, node):
+            exprs = []
+            # rewrite left-hand side of assignment
+            node.value = self.visit(node.value)
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and is_self_attribute(
+                        target) and target.attr in fields_t:
+                    exprs += self.rw_lens(target, node.value)
+                elif isinstance(target, ast.Name):
+                    node_copy = copy.deepcopy(node)
+                    node_copy.targets = [target]
+                    exprs.append(node_copy)
+                elif isinstance(target, ast.Tuple):
+                    assert (False)
+                elif isinstance(target, ast.List):
+                    assert (False)
+            return exprs
 
         def visit_Attribute(self, node):
-            if isinstance(node.value, ast.Name) and node.value.id == 'self':
+            if is_self_attribute(node) and node.attr in fields_t:
                 if isinstance(node.ctx, ast.Load):
-                    # Create the attribute node for "self.lens"
-                    lenses = lookup.lens_lookup(g, v, t, cls_node)
-                    lens_node = lenses[node.attr]
-                    self_attr = ast.Attribute(value=ast.Name(id='self',
-                                                             ctx=ast.Load()),
-                                              attr=lens_node.name,
-                                              ctx=ast.Load())
+                    if lenses_v_t is not None:
+                        if node.attr in lenses_v_t:
+                            lens_node = lenses_v_t[node.attr]
+                            self_attr = ast.Attribute(value=ast.Name(
+                                id='self', ctx=ast.Load()),
+                                                      attr=lens_node.name,
+                                                      ctx=ast.Load())
 
-                    # Create the call node for "self.lens()"
-                    self_call = ast.Call(func=self_attr, args=[], keywords=[])
-                    node = self_call
-                    # if not any(e for e in tr_cls_node.body if isinstance(
-                    #         e, FunctionDef) and e.name == lens_node.name):
-                    #     tr_cls_node.body.append(lens_node)
+                            # Create the call node for "self.lens()"
+                            self_call = ast.Call(func=self_attr,
+                                                 args=[],
+                                                 keywords=[])
+                            return self_call
+                        else:
+                            raise Exception(
+                                f'Missing lens for field {node.attr} from version {v} to version {t}'
+                            )
             return node
 
+    lenses_t_v = lookup.lens_at(g, t, v, tr_cls_node)
+    lenses_v_t = lookup.lens_at(g, v, t, cls_node)
+    fields_t = lookup.fields_at(g, cls_node, t)
     LensTransformer().visit(node)
     return node
 
@@ -166,10 +206,8 @@ def tr_select_methods(g, node, v) -> ClassDef:
 
 
 def tr_class(mod, cls: Type, v: VersionIdentifier) -> ClassDef:
-    src = inspect.getsource(cls)
-    cls_ast: ast.ClassDef = cast(ClassDef, ast.parse(src).body[0])
+    cls_ast, g = parse_class(cls)
     tr_cls_ast = copy.deepcopy(cls_ast)
-    g = graph(cls_ast)
 
     class ClassTransformer(ast.NodeTransformer):
         """
@@ -181,16 +219,17 @@ def tr_class(mod, cls: Type, v: VersionIdentifier) -> ClassDef:
         def visit_ClassDef(self, node: ClassDef):
             self.parent = node
             for expr in list(node.body):
-                if is_lens(expr):
-                    continue
                 expr = self.visit(expr)
             return node
 
         def visit_FunctionDef(self, node):
+            if is_lens(node):
+                return node
             mdef = lookup.method_lookup(g, cls_ast, node.name, v)
+            if mdef is None:
+                assert (False)
             target = get_at(mdef)
-            # fields = lookup.fields_lookup(g, cls_ast, target)
-            lenses = lookup.lens_lookup(g, target, v, cls_ast)
+            lenses = lookup.lens_at(g, target, v, cls_ast)
             if lenses is not None:
                 node = tr_lens(cls_ast, self.parent, node, g, v, target)
             return node

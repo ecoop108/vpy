@@ -28,11 +28,8 @@ class Name:
 
     @get('start', 'full', 'full_name')
     def lens_full(self):
+        self.reverse()
         return f"{self.first} {self.last}"
-
-    # @put('start', 'full', 'full_name')
-    # def lens_full(self, first, last):
-    #     return f"{first} {last}"
 
     @at('start')
     def reverse(self):
@@ -45,16 +42,15 @@ class Name:
     @at('full')
     def set_name(self, val):
         self.full_name = val
-        # check lenses from full -> start
-        # select all lenses that have self.full_name in their body
-        # update fields with selected lenses
-        # self.first = self.lens_first(val)
-        # self.last = self.lens_last(val)
 
     @at('start')
     def set_last(self, some_name):
-        self.last = self.first + "!" + some_name
-        # self.full_name = self.lens_full(self.lens_first(), last)
+        x = self.last = self.first + "!" + some_name
+        print(self.last)
+        a: str = self.first
+        self.last += "%%%"
+        # self.full_name = self.lens_full(last=self.lens_first() + '%%%', first=
+        # self.lens_first())
 
 
 @run('full')

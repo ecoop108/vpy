@@ -1,4 +1,5 @@
-from vpy.decorators import version, at, lens
+from vpy.decorators import version, at, get
+
 
 @version(name='start')
 @version(name='full', replaces=['start'])
@@ -13,19 +14,13 @@ class Name:
     def __init__(self, full: str):
         self.full_name: str = full
 
-    @lens('full', 'start', 'first')
+    @get('full', 'start', 'first')
     def lens_first(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[0]
         return self.full_name
 
-    # @lens('full', 'start', 'last')
-    # def lens_last(self) -> str:
-    #     if ' ' in self.full_name:
-    #         return self.full_name.split()[1]
-        return ''
-
-    @lens('start', 'full', 'full_name')
+    @get('start', 'full', 'full_name')
     def lens_full(self):
         return f"{self.first} {self.last}"
 
@@ -36,7 +31,7 @@ class Name:
     @at('full')
     def get(self):
         return self.full_name
-    
+
     @at('start')
     def set_last(self, last):
         print(self.last)
