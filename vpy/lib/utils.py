@@ -4,6 +4,16 @@ from typing import TypeVar
 from vpy.lib.lib_types import Graph, Version, VersionIdentifier
 
 
+def has_get_lens(cls_node: ast.ClassDef,
+                 get_lens_node: ast.FunctionDef) -> bool:
+    for e in cls_node.body:
+        if isinstance(e, ast.FunctionDef) and e.name == get_lens_node.name:
+            return any(
+                isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
+                    d.func.id == 'get') for d in e.decorator_list)
+    return False
+
+
 def has_put_lens(cls_node: ast.ClassDef,
                  get_lens_node: ast.FunctionDef) -> bool:
     for e in cls_node.body:

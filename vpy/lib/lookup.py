@@ -32,8 +32,8 @@ def lens_at(g: Graph, v: VersionIdentifier, t: VersionIdentifier,
     return None
 
 
-def __replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
-                                v: VersionIdentifier) -> Optional[FunctionDef]:
+def replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
+                              v: VersionIdentifier) -> Optional[FunctionDef]:
     replacements = g.replacements(v)
     rm = [
         me for me in
@@ -43,8 +43,8 @@ def __replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
     return rm[0] if len(rm) == 1 else None
 
 
-def local_method_lookup(cls_ast: ClassDef, m,
-                        v: VersionIdentifier) -> Optional[FunctionDef]:
+def __local_method_lookup(cls_ast: ClassDef, m,
+                          v: VersionIdentifier) -> Optional[FunctionDef]:
     methods = [
         m for m in cls_ast.body
         if isinstance(m, ast.FunctionDef) and not is_lens(m) and get_at(m) == v
@@ -72,43 +72,39 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m,
     if v not in g:
         return None
 
-    # replacement search
-    rm = __replacement_method_lookup(g, cls_ast, m, v)
+    rm = replacement_method_lookup(g, cls_ast, m, v)
     if rm is not None:
         return rm
 
-    # local search
-    lm = local_method_lookup(cls_ast, m, v)
+    lm = __local_method_lookup(cls_ast, m, v)
     if lm is not None:
         return lm
 
-    # upgrade search
     um = __inherited_method_lookup(g, cls_ast, m, v)
     if um is not None:
         return um
     return None
 
 
-#TODO: Ignore inherited fields. Only look for new fields
 def base(g: Graph, cls_ast: ClassDef,
-         v: VersionIdentifier) -> tuple[VersionIdentifier | None, set[str]]:
+         v: VersionIdentifier) -> tuple[VersionIdentifier, set[str]] | None:
 
     class FieldCollector(ast.NodeVisitor):
 
         def __init__(self):
             self.references = set()
-            self.methods = [m.name for m in methods_at(g, cls_ast, v)]
-            print(v, self.methods)
+            self.methods = [
+                m.name for m in methods_at(g, cls_ast, v)
+                if replacement_method_lookup(g, cls_ast, m.name, v) is None
+            ]
             self.fields = set()
 
         def visit_FunctionDef(self, node: FunctionDef):
             # if is_lens(node):
             #     return
-            # look for new fields only in local method definitions
             if get_at(node) != v:
                 return
-            for stmt in node.body:
-                self.visit(stmt)
+            self.generic_visit(node)
 
         def visit_Assign(self, node):
             for target in node.targets:
@@ -133,14 +129,15 @@ def base(g: Graph, cls_ast: ClassDef,
     visitor.visit(cls_ast)
     inherited = set(field for p in g.parents(v)
                     for field in base(g.delete(v), cls_ast, p)[1])
-    if len(visitor.fields) > 0:
-        if any(field not in inherited for field in visitor.fields):
-            return (v, visitor.fields)
+
+    if len(visitor.fields) > 0 and any(field not in inherited
+                                       for field in visitor.fields):
+        return (v, visitor.fields)
     for p in (g[v].upgrades + g[v].replaces):
         back = base(g, cls_ast, p)
         if back is not None:
             return back
-    return (None, set())
+    return None
 
 
 def methods_at(g: Graph, cls_ast: ClassDef,

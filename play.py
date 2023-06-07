@@ -55,7 +55,7 @@ class Name:
     @at('start')
     def set_last(self, some_name):
         y = self.last = self.first + "!" + some_name
-        self.last += "%%%"
+        self.last = "%%%"
 
 
 @run('full')

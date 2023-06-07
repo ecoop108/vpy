@@ -49,7 +49,6 @@ class Name:
     @at('second')
     def reverse(self):
         self.last = 'x'
-        self.xyz = 132
         return self.last + "; " + self.first
 
     @at('full')
@@ -73,18 +72,25 @@ def test_base(model):
     import ast
     cls_ast, g = model
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('start'))[0] == VersionIdentifier('start')
+                v=VersionIdentifier('start')) == (VersionIdentifier('start'),
+                                                  {'first', 'last'})
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('second'))[0] == VersionIdentifier('start')
+                v=VersionIdentifier('second')) == (VersionIdentifier('start'),
+                                                   {'last', 'first'})
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('full'))[0] == VersionIdentifier('full')
+                v=VersionIdentifier('full')) == (VersionIdentifier('full'),
+                                                 {'full_name'})
 
     # add method that sets a new field
     m = ast.parse('''
 @at('second')
 def a(self):
-    self.x = 1''').body[0]
+    self.x = 1
+    self.xyz = 123''').body[0]
     cls_ast.body.append(m)
+    assert base(g=g, cls_ast=cls_ast,
+                v=VersionIdentifier('second')) == (VersionIdentifier('second'),
+                                                   {'last', 'xyz', 'x'})
     assert base(
         g=g, cls_ast=cls_ast,
         v=VersionIdentifier('second'))[0] == VersionIdentifier('second')
