@@ -2,8 +2,8 @@ import ast
 from ast import Attribute, ClassDef, FunctionDef, Name, arg, keyword
 import copy
 from typing import Type
-from vpy.lib.utils import get_at, has_put_lens, is_lens, is_self_attribute, parse_class, remove_decorators
 
+from vpy.lib.utils import get_at, has_put_lens, is_lens, is_self_attribute, parse_class, remove_decorators
 import vpy.lib.lookup as lookup
 from vpy.lib.lib_types import Graph, VersionIdentifier
 
@@ -63,6 +63,9 @@ def tr_lens(cls_node: ClassDef, tr_cls_node: ClassDef, node: FunctionDef,
 
     def check_field_in_function(node, field):
         for child_node in ast.walk(node):
+            #TODO: Get fields from other functions
+            if isinstance(child_node, ast.Call):
+                pass
             if isinstance(child_node, ast.Attribute):
                 if is_self_attribute(child_node) and child_node.attr == field:
                     return True
@@ -93,6 +96,7 @@ def tr_lens(cls_node: ClassDef, tr_cls_node: ClassDef, node: FunctionDef,
                                             value=self.visit(
                                                 ast.parse(f'self.{f}')))
                                     for f in fields_t if f != target.attr
+                                    # TODO: only add fields that appear in lens body
                                 ])
 
                             if not has_put_lens(tr_cls_node, lens_node):
@@ -110,16 +114,12 @@ def tr_lens(cls_node: ClassDef, tr_cls_node: ClassDef, node: FunctionDef,
         def visit_AugAssign(self, node: ast.AugAssign):
             if isinstance(node.target, ast.Attribute) and is_self_attribute(
                     node.target) and node.target.attr in fields_t:
-                unfold = ast.BinOp(left=node.target,
+                left_node = copy.deepcopy(node.target)
+                left_node.ctx = ast.Load()
+                unfold = ast.BinOp(left=left_node,
                                    right=node.value,
                                    op=node.op)
                 assign = ast.Assign(targets=[node.target], value=unfold)
-                print(node.target.ctx)
-                print(ast.unparse(ast.fix_missing_locations(node.target)))
-                print(ast.unparse(ast.fix_missing_locations(unfold)))
-                print(2233)
-                print(ast.unparse(ast.fix_missing_locations(assign)))
-                print(2222)
                 return self.rw_lens(node.target, assign.value)
             if node.value:
                 node.value = self.visit(node.value)
@@ -180,7 +180,8 @@ def tr_lens(cls_node: ClassDef, tr_cls_node: ClassDef, node: FunctionDef,
     return node
 
 
-def tr_select_methods(g, node, v) -> ClassDef:
+def tr_select_methods(g: Graph, node: ClassDef,
+                      v: VersionIdentifier) -> ClassDef:
 
     class TransformerSelectMethods(ast.NodeTransformer):
 
@@ -192,13 +193,13 @@ def tr_select_methods(g, node, v) -> ClassDef:
                     # node.body.remove(expr)
                     continue
                 mdef = lookup.method_lookup(g, node, expr.name, v)
-                if mdef is None:
+                if mdef is None or get_at(mdef) != get_at(expr):
                     node.body.remove(expr)
-                    continue
-                target = get_at(mdef)
-                mver = get_at(expr)
-                if mver != target:
-                    node.body.remove(expr)
+                #     continue
+                # target = get_at(mdef)
+                # mver = get_at(expr)
+                # if mver != target:
+                #     node.body.remove(expr)
             return node
 
     node = TransformerSelectMethods().visit(node)

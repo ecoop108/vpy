@@ -43,8 +43,8 @@ def __replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
     return rm[0] if len(rm) == 1 else None
 
 
-def __local_method_lookup(cls_ast: ClassDef, m,
-                          v: VersionIdentifier) -> Optional[FunctionDef]:
+def local_method_lookup(cls_ast: ClassDef, m,
+                        v: VersionIdentifier) -> Optional[FunctionDef]:
     methods = [
         m for m in cls_ast.body
         if isinstance(m, ast.FunctionDef) and not is_lens(m) and get_at(m) == v
@@ -78,7 +78,7 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m,
         return rm
 
     # local search
-    lm = __local_method_lookup(cls_ast, m, v)
+    lm = local_method_lookup(cls_ast, m, v)
     if lm is not None:
         return lm
 
@@ -89,76 +89,23 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m,
     return None
 
 
-#TODO: Fix this. Should only look for fields.
-def base(g, cls_ast: ClassDef,
-         v: VersionIdentifier) -> Optional[VersionIdentifier]:
-    # class BaseVisitor(ast.NodeVisitor):
-    #     def __init__(self):
-    #         pass
-    #     def visit_FunctionDef(self, node: FunctionDef):
-    #         if is_lens(node):
-    #             return
-    #         if get_at(node) != v:
-    #             return
-
-    found = False
-    for fun in ast.walk(cls_ast):
-        if isinstance(
-                fun,
-                ast.FunctionDef) and (not is_lens(fun)) and get_at(fun) == v:
-            for stmt in ast.walk(fun):
-                if isinstance(stmt, ast.Attribute) and isinstance(
-                        stmt.value, ast.Name) and stmt.value.id == 'self':
-                    found = True
-    if found:
-        return v
-    for p in (g[v].upgrades + g[v].replaces):
-        back = base(g, cls_ast, p)
-        if back is not None:
-            return back
-    return None
-
-
-def methods_at(g: Graph, cls_ast: ClassDef,
-               v: VersionIdentifier) -> set[FunctionDef]:
-    """
-    Returns the methods of class cls available at version v.
-    """
-
-    class MethodCollector(ast.NodeVisitor):
-
-        def __init__(self):
-            self.methods = set()
-
-        def visit_ClassDef(self, node: ClassDef):
-            for expr in node.body:
-                if isinstance(expr, FunctionDef):
-                    mdef = method_lookup(g, cls_ast, node.name, v)
-                    if mdef is not None:
-                        self.methods.add(mdef)
-
-    visitor = MethodCollector()
-    visitor.visit(cls_ast)
-    return visitor.methods
-
-
-def fields_at(g, cls: ClassDef, v: VersionIdentifier) -> set[str]:
-    """
-    Returns the field names defined in class cls for version v.
-    """
+#TODO: Ignore inherited fields. Only look for new fields
+def base(g: Graph, cls_ast: ClassDef,
+         v: VersionIdentifier) -> tuple[VersionIdentifier | None, set[str]]:
 
     class FieldCollector(ast.NodeVisitor):
 
         def __init__(self):
             self.references = set()
-            self.methods = [m.name for m in methods_at(g, cls, v)]
-            self.base = base(g, cls, v)
+            self.methods = [m.name for m in methods_at(g, cls_ast, v)]
+            print(v, self.methods)
             self.fields = set()
 
         def visit_FunctionDef(self, node: FunctionDef):
             # if is_lens(node):
             #     return
-            if get_at(node) != self.base:
+            # look for new fields only in local method definitions
+            if get_at(node) != v:
                 return
             for stmt in node.body:
                 self.visit(stmt)
@@ -183,5 +130,45 @@ def fields_at(g, cls: ClassDef, v: VersionIdentifier) -> set[str]:
                     self.fields.add(node.target.attr)
 
     visitor = FieldCollector()
-    visitor.visit(cls)
-    return visitor.fields
+    visitor.visit(cls_ast)
+    inherited = set(field for p in g.parents(v)
+                    for field in base(g.delete(v), cls_ast, p)[1])
+    if len(visitor.fields) > 0:
+        if any(field not in inherited for field in visitor.fields):
+            return (v, visitor.fields)
+    for p in (g[v].upgrades + g[v].replaces):
+        back = base(g, cls_ast, p)
+        if back is not None:
+            return back
+    return (None, set())
+
+
+def methods_at(g: Graph, cls_ast: ClassDef,
+               v: VersionIdentifier) -> set[FunctionDef]:
+    """
+    Returns the methods of class cls available at version v.
+    """
+
+    class MethodCollector(ast.NodeVisitor):
+
+        def __init__(self):
+            self.methods = set()
+
+        def visit_ClassDef(self, node: ClassDef):
+            for expr in node.body:
+                if isinstance(expr, FunctionDef):
+                    mdef = method_lookup(g, cls_ast, expr.name, v)
+                    if mdef is not None:
+                        self.methods.add(mdef)
+
+    visitor = MethodCollector()
+    visitor.visit(cls_ast)
+    return visitor.methods
+
+
+def fields_at(g, cls: ClassDef, v: VersionIdentifier) -> set[str]:
+    """
+    Returns the field names defined in class cls for version v.
+    """
+    _, fields = base(g, cls, v)
+    return fields

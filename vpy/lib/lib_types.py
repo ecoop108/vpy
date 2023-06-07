@@ -1,4 +1,4 @@
-from ast import FunctionDef
+from ast import FunctionDef, keyword
 from copy import deepcopy
 from dataclasses import InitVar, dataclass, field
 from typing import NewType, NamedTuple, Callable
@@ -14,7 +14,7 @@ VersionIdentifier = NewType('VersionIdentifier', str)
 
 @dataclass
 class Version():
-    kws: InitVar[str]
+    kws: InitVar[list[keyword]]
     name: VersionIdentifier = field(init=False)
     replaces: list[VersionIdentifier] = field(init=False)
     upgrades: list[VersionIdentifier] = field(init=False)
@@ -35,10 +35,19 @@ class Version():
                 ]
 
 
-class Graph(dict):
+class Graph(dict[VersionIdentifier, Version]):
+
+    def parents(self, v) -> set[VersionIdentifier]:
+        p = set()
+        version = self[v]
+        for u in version.upgrades:
+            p.add(u)
+        for r in version.replaces:
+            p.add(r)
+        return p
 
     def delete(self, v) -> 'Graph':
-        copy = Graph({str(k): deepcopy(v) for k, v in self.items()})
+        copy = deepcopy(self)
         del copy[v]
         for val in copy.values():
             if v in val.upgrades:

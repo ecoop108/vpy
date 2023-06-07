@@ -1,7 +1,7 @@
 import ast
 import inspect
 from typing import TypeVar
-from vpy.lib.lib_types import Graph, Version
+from vpy.lib.lib_types import Graph, Version, VersionIdentifier
 
 
 def has_put_lens(cls_node: ast.ClassDef,
@@ -21,10 +21,14 @@ def is_self_attribute(node: ast.Attribute) -> bool:
     return False
 
 
-def graph(cls_ast: ast.ClassDef):
+def graph(cls_ast: ast.ClassDef) -> Graph:
     return Graph({
         v.name: v
-        for v in [Version(d.keywords) for d in cls_ast.decorator_list]
+        for v in [
+            Version(d.keywords) for d in cls_ast.decorator_list
+            if isinstance(d, ast.Call) and isinstance(d.func, ast.Name)
+            and d.func.id == 'version'
+        ]
     })
 
 
@@ -35,14 +39,14 @@ def parse_class(cls) -> tuple[ast.ClassDef, Graph]:
     return (cls_ast, g)
 
 
-def is_lens(node: ast.FunctionDef):
+def is_lens(node: ast.FunctionDef) -> bool:
     return any(
         isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
             d.func.id == 'get' or d.func.id == 'put')
         for d in node.decorator_list)
 
 
-def get_at(node: ast.FunctionDef):
+def get_at(node: ast.FunctionDef) -> VersionIdentifier:
     return [
         d for d in node.decorator_list if isinstance(d, ast.Call)
         and isinstance(d.func, ast.Name) and d.func.id in ['get', 'at']

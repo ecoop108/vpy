@@ -1,4 +1,5 @@
-from vpy.decorators import version, at, run, get, put
+from typing_extensions import reveal_type
+from vpy.decorators import at, get, run, version
 
 
 @version(name='start')
@@ -17,45 +18,50 @@ class Name:
     @get('full', 'start', 'first')
     def lens_first(self) -> str:
         if ' ' in self.full_name:
-            return self.full_name.split()[0]
+            first, _ = self.full_name.split(' ')
+            return first
         return self.full_name
 
     @get('full', 'start', 'last')
     def lens_last(self) -> str:
         if ' ' in self.full_name:
-            return self.full_name.split()[1]
+            _, last = self.full_name.split(' ')
+            return last
         return ''
+
+    @get('full', 'start', 'x')
+    def lens_x(self):
+        return 4
 
     @get('start', 'full', 'full_name')
     def lens_full(self):
-        self.reverse()
+        # return self.reverse()
         return f"{self.first} {self.last}"
 
     @at('start')
     def reverse(self):
-        return self.last + ", " + self.first
+        self.x: int = self.x + 3
+        return self.x
+        # return self.last + ", " + self.first
 
     @at('full')
     def get(self):
         return self.full_name
 
     @at('full')
-    def set_name(self, val):
+    def set_name(self, val: str):
         self.full_name = val
 
     @at('start')
     def set_last(self, some_name):
-        x = self.last = self.first + "!" + some_name
-        print(self.last)
-        a: str = self.first
+        y = self.last = self.first + "!" + some_name
         self.last += "%%%"
-        # self.full_name = self.lens_full(last=self.lens_first() + '%%%', first=
-        # self.lens_first())
 
 
 @run('full')
-def name_main():
+def main():
     obj = Name('Rolling Stones')
+    reveal_type(obj.lens_full)
     print(obj.get())
     print(obj.reverse())
     obj.set_last("Stoned")
@@ -66,39 +72,9 @@ def name_main():
 @run('start')
 def name_switch_context():
     obj = Name("Bob", "Dylan")
-    print(obj.get())
-
-
-@version(name='start')
-@version(name='bugfix', replaces=['start'])
-@version(name='dec', upgrades=['start'])
-class A:
-
-    @at('start')
-    def __init__(self, counter):
-        self.counter = counter
-
-    @at('start')
-    def inc(self):
-        self.counter += 2
-
-    @at('bugfix')
-    def inc(self):
-        self.counter += 1
-
-    @at('dec')
-    def dec(self):
-        self.counter -= 1
-
-
-@run('dec')
-def a_main():
-    ctr = A(4)
-    ctr.inc()
-    ctr.dec()
-    print(ctr.counter)
+    print(obj.get())  # Bob Dylan
+    obj.set_last("Marley")
 
 
 if __name__ == "__main__":
-    name_main()
-    # a_main()
+    main()
