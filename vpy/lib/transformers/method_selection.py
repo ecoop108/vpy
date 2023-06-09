@@ -13,13 +13,14 @@ class SelectMethodsTransformer(ast.NodeTransformer):
         self.v = v
 
     def visit_ClassDef(self, node: ClassDef) -> ClassDef:
-        for expr in list(node.body):
-            if not isinstance(expr, FunctionDef):
-                continue
-            if is_lens(expr):
-                node.body.remove(expr)
-                continue
-            mdef = lookup.method_lookup(self.g, node, expr.name, self.v)
-            if mdef is None or get_at(mdef) != get_at(expr):
-                node.body.remove(expr)
+        self.cls_node = node
+        self.generic_visit(node)
+        return node
+
+    def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
+        if is_lens(node):
+            return None
+        mdef = lookup.method_lookup(self.g, self.cls_node, node.name, self.v)
+        if mdef is None or get_at(mdef) != get_at(node):
+            return None
         return node
