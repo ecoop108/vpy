@@ -1,28 +1,15 @@
-@version(name='start')
-@version(name='bugfix', replaces=['start'])
-@version(name='dec', upgrades=['start'])
-class A:
-
-    @at('start')
-    def __init__(self, counter):
-        self.counter = counter
-
-    @at('start')
-    def inc(self):
-        self.counter += 2
-
-    @at('bugfix')
-    def inc(self):
-        self.counter += 1
-
-    @at('dec')
-    def dec(self):
-        self.counter -= 1
+from vpy.decorators import at, version
 
 
-@run('dec')
-def a_main():
-    ctr = A(4)
-    ctr.inc()
-    ctr.dec()
-    print(ctr.counter)
+@version(name='1', replaces=['2'], upgrades=['3'])
+@version(name='2')
+@version(name='3')
+class Name:
+
+    @at('3')
+    def __init__(self):
+        pass
+
+    @at('2')
+    def __init__(self):
+        pass

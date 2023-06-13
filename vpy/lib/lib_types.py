@@ -1,60 +1,75 @@
 from ast import FunctionDef, keyword
 from copy import deepcopy
-from dataclasses import InitVar, dataclass, field
-from typing import NewType, NamedTuple, Callable
+from typing import NewType
+import networkx as nx
+
+VersionId = NewType('VersionIdentifier', str)
+
+Lenses = NewType(
+    'Lenses', dict[VersionId, dict[VersionId,
+                                           dict[str, FunctionDef]]])
 
 
-class Lens(NamedTuple):
-    put: FunctionDef
-    get: FunctionDef
-
-
-VersionIdentifier = NewType('VersionIdentifier', str)
-
-
-@dataclass
 class Version():
-    kws: InitVar[list[keyword]]
-    name: VersionIdentifier = field(init=False)
-    replaces: list[VersionIdentifier] = field(init=False)
-    upgrades: list[VersionIdentifier] = field(init=False)
 
-    def __post_init__(self, kws):
-        self.replaces = []
-        self.upgrades = []
+    def __init__(self, kws: list[keyword]):
+        replaces = set()
+        upgrades = set()
         for k in kws:
             if k.arg == 'name':
-                self.name = VersionIdentifier(k.value.value)
+                self.name = VersionId(k.value.value)
             if k.arg == 'upgrades':
-                self.upgrades = [
-                    VersionIdentifier(v.value) for v in k.value.elts
-                ]
+                upgrades = {VersionId(v.value) for v in k.value.elts}
             if k.arg == 'replaces':
-                self.replaces = [
-                    VersionIdentifier(v.value) for v in k.value.elts
-                ]
+                replaces = {VersionId(v.value) for v in k.value.elts}
+        self.upgrades = tuple(upgrades)
+        self.replaces = tuple(replaces)
+
+    def __repr__(self):
+        return f'Version {self.name}'
 
 
-class Graph(dict[VersionIdentifier, Version]):
+class Graph(nx.DiGraph):
 
-    def parents(self, v) -> set[VersionIdentifier]:
-        p = set()
-        version = self[v]
-        for u in version.upgrades:
-            p.add(u)
-        for r in version.replaces:
-            p.add(r)
-        return p
+    def __init__(self, *, graph: dict[VersionId, Version] = {}):
+        super().__init__()
+        for version in graph.values():
+            self.add_node(version)
+        for version in graph.values():
+            for upgrade in version.upgrades:
+                if upgrade in graph:
+                    self.add_edge(version, graph[upgrade], label='upgrades')
+            for replace in version.replaces:
+                if replace in graph:
+                    self.add_edge(version, graph[replace], label='replaces')
+
+    def find_version(self, v: VersionId) -> Version | None:
+        for version in self.nodes:
+            if version.name == v:
+                return version
+        return None
+
+    def all(self) -> list[Version]:
+        return list(self.nodes)
+
+    def parents(self, v: VersionId) -> set[VersionId]:
+        if version := self.find_version(v):
+            return {v for v in version.upgrades + version.replaces}
+        return set()
 
     def delete(self, v) -> 'Graph':
-        copy = deepcopy(self)
-        del copy[v]
-        for val in copy.values():
-            if v in val.upgrades:
-                val.upgrades.remove(v)
-            if v in val.replaces:
-                val.replaces.remove(v)
-        return copy
+        other = deepcopy(self)
+        version = other.find_version(v)
+        if version is None:
+            return other
+        other.remove_node(version)
+        for val in other.nodes:
+            val.upgrades = tuple(u for u in val.upgrades if u != v)
+            val.replaces = tuple(r for r in val.replaces if r != v)
+        return other
 
-    def replacements(self, v: VersionIdentifier) -> list[Version]:
-        return [w for w in self.values() if v in w.replaces]
+    def children(self, v) -> list[Version]:
+        return [w for w in self.nodes if v in w.upgrades or v in w.replaces]
+
+    def replacements(self, v: VersionId) -> list[Version]:
+        return [w for w in self.nodes if v in w.replaces]

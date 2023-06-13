@@ -1,4 +1,3 @@
-from typing_extensions import reveal_type
 from vpy.decorators import at, get, run, version
 
 
@@ -29,20 +28,13 @@ class Name:
             return last
         return ''
 
-    @get('full', 'start', 'x')
-    def lens_x(self):
-        return 4
-
     @get('start', 'full', 'full_name')
     def lens_full(self):
-        # return self.reverse()
         return f"{self.first} {self.last}"
 
     @at('start')
     def reverse(self):
-        self.x: int = self.x + 3
-        return self.x
-        # return self.last + ", " + self.first
+        return self.last + ", " + self.first
 
     @at('full')
     def get(self):
@@ -54,8 +46,8 @@ class Name:
 
     @at('start')
     def set_last(self, some_name):
-        y = self.last = self.first + "!" + some_name
-        self.last = "%%%"
+        self.last, self.first, y = x = self.g()
+        self.last = some_name
 
 
 @run('full')

@@ -2,27 +2,27 @@ import argparse
 import logging
 import os
 from lib.utils import graph
-from lib.lib_types import VersionIdentifier
+from lib.lib_types import VersionId
 import inspect
 import ast
 import importlib.util
 from lib.slice import rw_module
 
 
-def list_versions(file) -> set[VersionIdentifier]:
+def list_versions(file) -> set[VersionId]:
 
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module_ast = ast.parse(inspect.getsource(module))
-    versions: set[VersionIdentifier] = set()
+    versions: set[VersionId] = set()
     for node in module_ast.body:
         if isinstance(node, ast.ClassDef):
-            versions = versions.union(set(graph(node).keys()))
+            versions = versions.union({v.name for v in graph(node).nodes})
     return versions
 
 
-def target(file, version: VersionIdentifier):
+def target(file, version: VersionId):
     if version not in list_versions(file):
         exit(f"Invalid target {version}")
 
@@ -60,5 +60,5 @@ def cli_main():
         exit()
 
     if args.target:
-        target(args.input, VersionIdentifier(args.target))
+        target(args.input, VersionId(args.target))
         exit()

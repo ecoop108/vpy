@@ -41,7 +41,7 @@ def at(name):
     return decorator_version
 
 
-def version(name, replaces=[], upgrades=[]):
+def version(name: str, replaces=[], upgrades=[]):
 
     def decorator_version(cl):
         return cl

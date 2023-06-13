@@ -2,13 +2,13 @@ import ast
 from ast import ClassDef, FunctionDef
 
 import vpy.lib.lookup as lookup
-from vpy.lib.lib_types import Graph, VersionIdentifier
+from vpy.lib.lib_types import Graph, VersionId
 from vpy.lib.utils import get_at, is_lens
 
 
 class SelectMethodsTransformer(ast.NodeTransformer):
 
-    def __init__(self, g: Graph, v: VersionIdentifier):
+    def __init__(self, g: Graph, v: VersionId):
         self.g = g
         self.v = v
 

@@ -43,6 +43,7 @@ def run(fun, version, *args, **kwargs):
     exec(compiled_code, globs, locs)
 
     # run wrapped function after rewrite
+    print(fun, fun.__name__)
     result = locs[fun.__name__](*args, **kwargs)
 
     # teardown runtime

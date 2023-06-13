@@ -1,5 +1,5 @@
 from vpy.decorators import at, get, version
-from vpy.lib.lib_types import VersionIdentifier
+from vpy.lib.lib_types import VersionId
 import pytest
 
 from vpy.lib.utils import get_at
@@ -72,13 +72,13 @@ def test_base(model):
     import ast
     cls_ast, g = model
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('start')) == (VersionIdentifier('start'),
+                v=VersionId('start')) == (VersionId('start'),
                                                   {'first', 'last'})
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('second')) == (VersionIdentifier('start'),
+                v=VersionId('second')) == (VersionId('start'),
                                                    {'last', 'first'})
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('full')) == (VersionIdentifier('full'),
+                v=VersionId('full')) == (VersionId('full'),
                                                  {'full_name'})
 
     # add method that sets a new field
@@ -89,18 +89,18 @@ def a(self):
     self.xyz = 123''').body[0]
     cls_ast.body.append(m)
     assert base(g=g, cls_ast=cls_ast,
-                v=VersionIdentifier('second')) == (VersionIdentifier('second'),
+                v=VersionId('second')) == (VersionId('second'),
                                                    {'last', 'xyz', 'x'})
     assert base(
         g=g, cls_ast=cls_ast,
-        v=VersionIdentifier('second'))[0] == VersionIdentifier('second')
+        v=VersionId('second'))[0] == VersionId('second')
 
 
 def test_tr_select_methods(model):
     from vpy.lib.lookup import method_lookup
     import ast
     cls_ast, g = model
-    mdef = method_lookup(g, cls_ast, m='reverse', v=VersionIdentifier('full'))
+    mdef = method_lookup(g, cls_ast, m='reverse', v=VersionId('full'))
     assert mdef is not None
     assert get_at(mdef) == 'start'
 
@@ -110,14 +110,14 @@ def reverse(self):
     print(1)''').body[0]
     cls_ast.body.append(m)
 
-    mdef = method_lookup(g, cls_ast, m='reverse', v=VersionIdentifier('full'))
+    mdef = method_lookup(g, cls_ast, m='reverse', v=VersionId('full'))
     assert mdef is not None
     assert get_at(mdef) == 'full'
 
     mdef = method_lookup(g,
                          cls_ast,
                          m='new_method',
-                         v=VersionIdentifier('full'))
+                         v=VersionId('full'))
     assert mdef is None
 
     m = ast.parse('''
@@ -129,17 +129,17 @@ def new_method(self):
     mdef = method_lookup(g,
                          cls_ast,
                          m='new_method',
-                         v=VersionIdentifier('full'))
+                         v=VersionId('full'))
     assert mdef is None
     mdef = method_lookup(g,
                          cls_ast,
                          m='new_method',
-                         v=VersionIdentifier('start'))
+                         v=VersionId('start'))
     assert mdef is None
     mdef = method_lookup(g,
                          cls_ast,
                          m='new_method',
-                         v=VersionIdentifier('second'))
+                         v=VersionId('second'))
     assert mdef is not None
     assert get_at(mdef) == 'second'
 

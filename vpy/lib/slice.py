@@ -4,11 +4,12 @@ import inspect
 from vpy.lib.adapt import tr_class
 import importlib
 
-from vpy.lib.lib_types import VersionIdentifier
+from vpy.lib.lib_types import VersionId
+from vpy.lib.utils import parse_module
 
 
-def rw_module(mod, v: VersionIdentifier):
-    module_ast = ast.parse(inspect.getsource(mod))
+def rw_module(mod, v: VersionId):
+    module_ast = parse_module(mod)
     classes = [(node.name) for node in module_ast.body
                if isinstance(node, ast.ClassDef)]
     slices = []
@@ -19,7 +20,7 @@ def rw_module(mod, v: VersionIdentifier):
     return slices
 
 
-def rw(mod, cls: Type, v: VersionIdentifier) -> Type:
+def rw(mod, cls: Type, v: VersionId) -> Type:
     sl = tr_class(mod, cls, v)
     s = ast.unparse(ast.fix_missing_locations(sl))
     out = [None]
