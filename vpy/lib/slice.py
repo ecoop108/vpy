@@ -1,6 +1,5 @@
 import ast
 from typing import Type
-import inspect
 from vpy.lib.adapt import tr_class
 import importlib
 
@@ -20,7 +19,7 @@ def rw_module(mod, v: VersionId):
     return slices
 
 
-def rw(mod, cls: Type, v: VersionId) -> Type:
+def eval_slice(mod, cls: Type, v: VersionId) -> Type:
     sl = tr_class(mod, cls, v)
     s = ast.unparse(ast.fix_missing_locations(sl))
     out = [None]

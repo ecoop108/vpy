@@ -1,7 +1,7 @@
 import ast
 import inspect
 import importlib
-from vpy.lib.slice import rw
+from vpy.lib.slice import eval_slice
 from vpy.lib.utils import remove_decorators
 
 
@@ -23,7 +23,7 @@ def run(fun, version, *args, **kwargs):
     classes = {}
     for m in inspect.getmembers(mod, inspect.isclass):
         if m[1].__module__ == mod.__name__:
-            classes[m[0]] = rw(mod.__name__, getattr(mod, m[0]), version)
+            classes[m[0]] = eval_slice(mod.__name__, getattr(mod, m[0]), version)
     # rewrite function calls
     src = inspect.getsource(fun)
     f_ast = ast.parse(src)

@@ -12,9 +12,9 @@ from vpy.typechecker.checker import check_cls
 
 
 def tr_class(mod, cls: Type, v: VersionId) -> ClassDef:
-    cls_ast, g = parse_class(cls)
+    cls_ast, g = parse_class(mod, cls)
     tr_cls_ast = copy.deepcopy(cls_ast)
-    status, err = check_cls(cls)
+    status, err = check_cls(mod, cls)
     if not status:
         raise Exception(err)
     bases = {}

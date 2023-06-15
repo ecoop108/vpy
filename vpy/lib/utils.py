@@ -66,15 +66,23 @@ def graph(cls_ast: ast.ClassDef) -> Graph:
         })
 
 
-def parse_module(mod) -> ast.Module:
-    src = inspect.getsource(mod)
+def parse_module(module) -> ast.Module:
+    src = inspect.getsource(module)
     tree = annotate_code(src)
     return tree
-def parse_class(cls) -> tuple[ast.ClassDef, Graph]:
+
+
+def parse_class(module, cls) -> tuple[ast.ClassDef, Graph]:
+
+    #TODO: look for class in given module
     src = inspect.getsource(cls)
-    # tree = annotate_code(src)
+    mod = inspect.getmodule(module)
+    tree = parse_module(module)
+    # for node in ast.walk(tree):
+    #     if isinstance(node, ast.ClassDef)
     # cls_ast: ast.ClassDef = tree.body[0]  # type: ignore
-    cls_ast: ast.ClassDef = ast.parse(src).body[0]  # type: ignore
+
+    cls_ast: ast.ClassDef = annotate_code(src).body[0]  # type: ignore
     g = graph(cls_ast)
     return (cls_ast, g)
 
