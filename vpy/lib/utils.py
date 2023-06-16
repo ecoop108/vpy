@@ -1,6 +1,7 @@
 import ast
 import inspect
-from typing import TypeVar
+from types import ModuleType
+from typing import Type, TypeVar
 
 from pyanalyze.ast_annotator import annotate_code
 from vpy.lib.lib_types import Graph, Version, VersionId
@@ -66,23 +67,18 @@ def graph(cls_ast: ast.ClassDef) -> Graph:
         })
 
 
-def parse_module(module) -> ast.Module:
+def parse_module(module: ModuleType) -> ast.Module:
     src = inspect.getsource(module)
     tree = annotate_code(src)
     return tree
 
 
-def parse_class(module, cls) -> tuple[ast.ClassDef, Graph]:
-
-    #TODO: look for class in given module
-    src = inspect.getsource(cls)
-    mod = inspect.getmodule(module)
+def parse_class(module: ModuleType, cls: Type) -> tuple[ast.ClassDef, Graph]:
     tree = parse_module(module)
-    # for node in ast.walk(tree):
-    #     if isinstance(node, ast.ClassDef)
-    # cls_ast: ast.ClassDef = tree.body[0]  # type: ignore
-
-    cls_ast: ast.ClassDef = annotate_code(src).body[0]  # type: ignore
+    cls_ast = [
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == cls.__name__
+    ][0]
     g = graph(cls_ast)
     return (cls_ast, g)
 
@@ -90,7 +86,7 @@ def parse_class(module, cls) -> tuple[ast.ClassDef, Graph]:
 def is_lens(node: ast.FunctionDef) -> bool:
     return any(
         isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
-            d.func.id == 'get' or d.func.id == 'put')
+            d.func.id in ['get', 'put'])
         for d in node.decorator_list)
 
 
@@ -117,14 +113,11 @@ def remove_decorators(node: T) -> T:
     remove = ['at', 'version', 'run', 'get', 'put']
     for child in ast.walk(node):
         new_decorators = []
-        if isinstance(child, ast.FunctionDef) or isinstance(
-                child, ast.ClassDef):
+        if isinstance(child, (ast.FunctionDef, ast.ClassDef)):
             for decorator in child.decorator_list:
                 if isinstance(decorator, ast.Call) and isinstance(
                         decorator.func, ast.Name):
-                    if decorator.func.id in remove:
-                        continue
-                    else:
+                    if decorator.func.id not in remove:
                         new_decorators.append(decorator)
             child.decorator_list = new_decorators
     return node

@@ -1,13 +1,12 @@
-from ast import FunctionDef, keyword
+from ast import Constant, FunctionDef, Tuple, keyword
 from copy import deepcopy
 from typing import NewType
 import networkx as nx
 
-VersionId = NewType('VersionIdentifier', str)
+VersionId = NewType('VersionId', str)
 
-Lenses = NewType(
-    'Lenses', dict[VersionId, dict[VersionId,
-                                           dict[str, FunctionDef]]])
+Lenses = NewType('Lenses', dict[VersionId, dict[VersionId, dict[str,
+                                                                FunctionDef]]])
 
 
 class Version():
@@ -16,12 +15,18 @@ class Version():
         replaces = set()
         upgrades = set()
         for k in kws:
-            if k.arg == 'name':
+            if k.arg == 'name' and isinstance(k.value, Constant):
                 self.name = VersionId(k.value.value)
-            if k.arg == 'upgrades':
-                upgrades = {VersionId(v.value) for v in k.value.elts}
-            if k.arg == 'replaces':
-                replaces = {VersionId(v.value) for v in k.value.elts}
+            if k.arg == 'upgrades' and isinstance(k.value, Tuple):
+                upgrades = {
+                    VersionId(v.value)
+                    for v in k.value.elts if isinstance(v, Constant)
+                }
+            if k.arg == 'replaces' and isinstance(k.value, Tuple):
+                replaces = {
+                    VersionId(v.value)
+                    for v in k.value.elts if isinstance(v, Constant)
+                }
         self.upgrades = tuple(upgrades)
         self.replaces = tuple(replaces)
 
@@ -54,10 +59,10 @@ class Graph(nx.DiGraph):
 
     def parents(self, v: VersionId) -> set[VersionId]:
         if version := self.find_version(v):
-            return {v for v in version.upgrades + version.replaces}
+            return set(version.upgrades + version.replaces)
         return set()
 
-    def delete(self, v) -> 'Graph':
+    def delete(self, v: VersionId) -> 'Graph':
         other = deepcopy(self)
         version = other.find_version(v)
         if version is None:
@@ -68,7 +73,7 @@ class Graph(nx.DiGraph):
             val.replaces = tuple(r for r in val.replaces if r != v)
         return other
 
-    def children(self, v) -> list[Version]:
+    def children(self, v: VersionId) -> list[Version]:
         return [w for w in self.nodes if v in w.upgrades or v in w.replaces]
 
     def replacements(self, v: VersionId) -> list[Version]:

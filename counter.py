@@ -1,6 +1,4 @@
-from pyanalyze.extensions import reveal_type
-from vpy.decorators import at, version, get, run
-
+from vpy.decorators import at, get, version
 
 @version(name='3', upgrades=['2'])
 @version(name='2', upgrades=['1'])

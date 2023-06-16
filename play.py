@@ -46,14 +46,13 @@ class Name:
 
     @at('start')
     def set_last(self, some_name):
-        self.last, self.first, y = x = self.g()
+        self.last, self.first, y = x = ("1","2",3)
         self.last = some_name
 
 
 @run('full')
 def main():
     obj = Name('Rolling Stones')
-    reveal_type(obj.lens_full)
     print(obj.get())
     print(obj.reverse())
     obj.set_last("Stoned")

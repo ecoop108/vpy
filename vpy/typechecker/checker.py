@@ -6,13 +6,14 @@ from networkx import find_cycle
 from networkx.exception import NetworkXNoCycle
 from vpy.lib.lib_types import Graph
 from vpy.lib.lookup import cls_lenses, method_lookup, methods_at, path_lookup
-from vpy.lib.utils import get_at, parse_class
+from vpy.lib.utils import get_at, graph, parse_class
 
 # def check_module(module: ModuleType, cls:Type):
 #     return check_cls(module)
 
-def check_cls(module: ModuleType, cls: Type) -> tuple[bool, list[str]]:
-    cls_ast, g = parse_class(module, cls)
+def check_cls(module: ModuleType, cls_ast: ClassDef) -> tuple[bool, list[str]]:
+    g = graph(cls_ast)
+    # cls_ast, g = parse_class(module, cls)
     for check in [check_version_graph, check_methds, check_missing_lenses]:
         status, err = check(g, cls_ast)
         if not status:

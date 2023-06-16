@@ -1,20 +1,19 @@
 import ast
 from ast import ClassDef
 import copy
-from typing import Type
 from vpy.lib.transformers.method_selection import SelectMethodsTransformer
 
-from vpy.lib.utils import parse_class, remove_decorators
-import vpy.lib.lookup as lookup
+from vpy.lib.utils import graph, remove_decorators
+from vpy.lib import lookup
 from vpy.lib.lib_types import VersionId
 from vpy.lib.transformers.lens import LensTransformer
 from vpy.typechecker.checker import check_cls
 
 
-def tr_class(mod, cls: Type, v: VersionId) -> ClassDef:
-    cls_ast, g = parse_class(mod, cls)
+def tr_class(mod, cls_ast: ClassDef, v: VersionId) -> ClassDef:
+    g = graph(cls_ast)
     tr_cls_ast = copy.deepcopy(cls_ast)
-    status, err = check_cls(mod, cls)
+    status, err = check_cls(mod, cls_ast)
     if not status:
         raise Exception(err)
     bases = {}

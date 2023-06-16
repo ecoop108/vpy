@@ -20,10 +20,12 @@ class ReplaceCallsTransformer(ast.NodeTransformer):
 
 def run(fun, version, *args, **kwargs):
     mod = inspect.getmodule(fun)
+    if mod is None:
+        raise Exception("Module does not exist")
     classes = {}
     for m in inspect.getmembers(mod, inspect.isclass):
         if m[1].__module__ == mod.__name__:
-            classes[m[0]] = eval_slice(mod.__name__, getattr(mod, m[0]), version)
+            classes[m[0]] = eval_slice(mod, getattr(mod, m[0]), version)
     # rewrite function calls
     src = inspect.getsource(fun)
     f_ast = ast.parse(src)
@@ -43,7 +45,6 @@ def run(fun, version, *args, **kwargs):
     exec(compiled_code, globs, locs)
 
     # run wrapped function after rewrite
-    print(fun, fun.__name__)
     result = locs[fun.__name__](*args, **kwargs)
 
     # teardown runtime

@@ -1,5 +1,5 @@
 import ast
-from ast import FunctionDef, ClassDef, Attribute, AugAssign, AnnAssign, Assign, NodeVisitor
+from ast import Attribute, ClassDef, FunctionDef, NodeVisitor
 from typing import Optional
 from vpy.lib.lib_types import Graph, Lenses, VersionId
 from vpy.lib.utils import get_decorator, is_lens, get_at, is_obj_attribute
@@ -60,8 +60,8 @@ def lens_lookup(g: Graph, v: VersionId, t: VersionId,
     return None
 
 
-def _replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
-                               v: VersionId) -> Optional[FunctionDef]:
+def _replacement_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
+                               v: VersionId) -> FunctionDef | None:
     replacements = g.replacements(v)
     rm = [
         me for me in
@@ -71,7 +71,7 @@ def _replacement_method_lookup(g: Graph, cls_ast: ClassDef, m,
     return rm[0] if len(rm) == 1 else None
 
 
-def __local_method_lookup(cls_ast: ClassDef, m,
+def _local_method_lookup(cls_ast: ClassDef, m: str,
                           v: VersionId) -> FunctionDef | None:
     methods = [
         m for m in cls_ast.body
@@ -83,7 +83,7 @@ def __local_method_lookup(cls_ast: ClassDef, m,
     return lm[0] if len(lm) == 1 else None
 
 
-def __inherited_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
+def _inherited_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
                               v: VersionId) -> FunctionDef | None:
     um = [
         me for me in
@@ -93,20 +93,20 @@ def __inherited_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
     return um[0] if len(um) == 1 else None
 
 
-def method_lookup(g: Graph, cls_ast: ClassDef, m,
+def method_lookup(g: Graph, cls_ast: ClassDef, m: str,
                   v: VersionId) -> FunctionDef | None:
-    if g.find_version(v) == None:
+    if g.find_version(v) is None:
         return None
 
     rm = _replacement_method_lookup(g, cls_ast, m, v)
     if rm is not None:
         return rm
 
-    lm = __local_method_lookup(cls_ast, m, v)
+    lm = _local_method_lookup(cls_ast, m, v)
     if lm is not None:
         return lm
 
-    um = __inherited_method_lookup(g, cls_ast, m, v)
+    um = _inherited_method_lookup(g, cls_ast, m, v)
     if um is not None:
         return um
     return None
@@ -133,7 +133,8 @@ def base(g: Graph, cls_ast: ClassDef,
 
         def visit_Assign(self, node):
             for target in node.targets:
-                if isinstance(target, Attribute) and is_obj_attribute(target, self.self_param):
+                if isinstance(target, Attribute) and is_obj_attribute(
+                        target, self.self_param):
                     if target.attr not in self.methods:
                         self.fields.add(target.attr)
 

@@ -30,7 +30,7 @@ class PutLens(ast.NodeTransformer):
     def __init__(self, fields: set[str]):
         self._fields = fields
 
-    def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef:
+    def visit_FunctionDef(self, node):
         self.self_obj = get_self_obj(node)
         references = fields_in_function(node, self._fields)
         for f in references:
@@ -43,7 +43,7 @@ class PutLens(ast.NodeTransformer):
         self.generic_visit(node)
         return node
 
-    def visit_Attribute(self, node) -> Attribute | Name:
+    def visit_Attribute(self, node):
         if is_field(node, self.self_obj, self._fields) and isinstance(
                 node.ctx, ast.Load):
             node = Name(id=node.attr, ctx=ast.Load())
@@ -111,7 +111,7 @@ class LensTransformer(ast.NodeTransformer):
                 exprs.append(lens_assign)
         return exprs
 
-    def visit_AugAssign(self, node: AugAssign):
+    def visit_AugAssign(self, node):
         if node.value:
             node.value = self.visit(node.value)
         if isinstance(node.target, Attribute) and is_field(
@@ -124,7 +124,7 @@ class LensTransformer(ast.NodeTransformer):
             return self.rw_assign(node.target, assign.value)
         return node
 
-    def visit_AnnAssign(self, node: AnnAssign):
+    def visit_AnnAssign(self, node):
         if node.value:
             node.value = self.visit(node.value)
         if isinstance(node.target, Attribute) and is_field(

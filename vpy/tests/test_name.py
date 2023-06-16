@@ -63,8 +63,10 @@ class Name:
 
 @pytest.fixture
 def model():
+    import sys
+    module = sys.modules[__name__]
     from vpy.lib.utils import parse_class
-    return parse_class(Name)
+    return parse_class(module, Name)
 
 
 def test_base(model):
