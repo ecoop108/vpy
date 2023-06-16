@@ -1,4 +1,4 @@
-from ast import Constant, FunctionDef, Tuple, keyword
+from ast import Constant, FunctionDef, List, keyword
 from copy import deepcopy
 from typing import NewType
 import networkx as nx
@@ -17,12 +17,12 @@ class Version():
         for k in kws:
             if k.arg == 'name' and isinstance(k.value, Constant):
                 self.name = VersionId(k.value.value)
-            if k.arg == 'upgrades' and isinstance(k.value, Tuple):
+            if k.arg == 'upgrades' and isinstance(k.value, List):
                 upgrades = {
                     VersionId(v.value)
                     for v in k.value.elts if isinstance(v, Constant)
                 }
-            if k.arg == 'replaces' and isinstance(k.value, Tuple):
+            if k.arg == 'replaces' and isinstance(k.value, List):
                 replaces = {
                     VersionId(v.value)
                     for v in k.value.elts if isinstance(v, Constant)

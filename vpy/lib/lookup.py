@@ -91,6 +91,7 @@ def _local_method_lookup(cls_ast: ClassDef, m: str,
 def _inherited_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
                               v: VersionId) -> FunctionDef | None:
     graph = g.delete(v)
+    print(m, v, g.parents(v))
     um = [
         me for me in
         [method_lookup(graph, cls_ast, m, r) for r in g.parents(v)]
@@ -103,7 +104,7 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m: str,
                   v: VersionId) -> FunctionDef | None:
     if g.find_version(v) is None:
         return None
-
+    print(123, m, v, g.find_version(v).upgrades)
     rm = _replacement_method_lookup(g, cls_ast, m, v)
     if rm is not None:
         return rm
