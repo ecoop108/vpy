@@ -1,6 +1,5 @@
 import ast
 from ast import Attribute, ClassDef, FunctionDef, NodeVisitor
-from typing import Optional
 from vpy.lib.lib_types import Graph, Lenses, VersionId
 from vpy.lib.utils import get_decorator, is_lens, get_at, is_obj_attribute
 
@@ -33,6 +32,9 @@ def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
 
 def lenses_at(cls_ast: ClassDef,
               v: VersionId) -> dict[VersionId, dict[str, FunctionDef]]:
+    """
+    Returns the lenses explicitly defined at version v.
+    """
     lenses = {}
     for method in cls_ast.body:
         if isinstance(method, FunctionDef):
@@ -51,6 +53,9 @@ def lenses_at(cls_ast: ClassDef,
 
 def lens_lookup(g: Graph, v: VersionId, t: VersionId,
                 cls_ast: ClassDef) -> dict[str, FunctionDef] | None:
+    """
+    Returns the lenses from v to t.
+    """
     lenses = lenses_at(cls_ast=cls_ast, v=v)
     if t in lenses:
         return lenses[t]
@@ -85,9 +90,10 @@ def _local_method_lookup(cls_ast: ClassDef, m: str,
 
 def _inherited_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
                               v: VersionId) -> FunctionDef | None:
+    graph = g.delete(v)
     um = [
         me for me in
-        [method_lookup(g.delete(v), cls_ast, m, r) for r in g.parents(v)]
+        [method_lookup(graph, cls_ast, m, r) for r in g.parents(v)]
         if me is not None
     ]
     return um[0] if len(um) == 1 else None
