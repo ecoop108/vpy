@@ -1,5 +1,6 @@
 from vpy.decorators import at, get, version
 
+
 @version(name='3', upgrades=['2'])
 @version(name='2', upgrades=['1'])
 @version(name='1')
@@ -8,6 +9,7 @@ class Name:
     @at('1')
     def __init__(self):
         self.y = 2
+        self.a = 2
 
     @at('2')
     def __init__(self):
@@ -29,11 +31,15 @@ class Name:
     def lens_z(self):
         return self.y + 1
 
+    @get('3', '1', 'a')
+    def lens_a(self):
+        return self.w + 4
+
     @get('2', '1', 'y')
     def lens_y(self):
         return self.z - 1
 
     @at('1')
     def f(a):
-       a.y += 3
-       return a.y
+        a.y += 3
+        return a.y + a.a
