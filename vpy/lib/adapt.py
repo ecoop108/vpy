@@ -1,12 +1,13 @@
 import ast
 from ast import ClassDef
+from collections import defaultdict
 import copy
 from vpy.lib.transformers.method_selection import SelectMethodsTransformer
 
 from vpy.lib.utils import graph, remove_decorators
 from vpy.lib import lookup
 from vpy.lib.lib_types import VersionId
-from vpy.lib.transformers.lens import LensTransformer
+from vpy.lib.transformers.lens import MethodRewriteTransformer
 from vpy.typechecker.checker import check_cls
 
 
@@ -16,26 +17,21 @@ def tr_class(mod, cls_ast: ClassDef, v: VersionId) -> ClassDef:
     status, err = check_cls(mod, cls_ast)
     if not status:
         raise Exception(err)
-    bases = {}
     fields = {}
-    lenses = {}
-    for k in g.nodes:
-        base = lookup.base(g, cls_ast, k.name)
-        if base is not None:
-            bases[k.name], fields[k.name] = base
-    for k in g.nodes:
-        for t in g.nodes:
+    lenses = lookup.cls_lenses(g, cls_ast)
+    for k in g.all():
+        fields[k.name] = lookup.base(g, cls_ast, k.name)[1]
+        for t in g.all():
             if k != t:
-                #TODO: base version or not?
-                if bases[k.name] not in lenses:
-                    lenses[bases[k.name]] = {}
+                if k.name not in lenses:
+                    lenses[k.name] = defaultdict(dict)
                 if (lens := lookup.lens_lookup(
                     g, k.name, t.name, tr_cls_ast)):
-                    lenses[bases[k.name]][bases[t.name]] = lens
+                    for field, lens_node in lens.items():
+                        lenses[k.name][field][t.name] = lens_node
     tr_cls_ast = SelectMethodsTransformer(g=g, v=v).visit(tr_cls_ast)
-    tr_cls_ast = LensTransformer(g=g,
+    tr_cls_ast = MethodRewriteTransformer(g=g,
                                  cls_ast=tr_cls_ast,
-                                 bases=bases,
                                  fields=fields,
                                  get_lenses=lenses,
                                  target=v).visit(tr_cls_ast)

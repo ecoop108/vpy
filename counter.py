@@ -14,6 +14,7 @@ class Name:
     @at('2')
     def __init__(self):
         self.z = 3
+        self.xx = 1
 
     @at('3')
     def __init__(self):
@@ -39,7 +40,12 @@ class Name:
     def lens_y(self):
         return self.z - 1
 
+    @at('3')
+    def fx(a):
+        a.w += 3
+
     @at('1')
     def f(a):
         a.y += 3
+        # a.
         return a.y + a.a

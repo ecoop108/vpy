@@ -7,6 +7,17 @@ from pyanalyze.ast_annotator import annotate_code
 from vpy.lib.lib_types import Graph, Version, VersionId
 import uuid
 
+class FieldReferenceCollector(ast.NodeVisitor):
+
+    def __init__(self, self_obj: str, fields: set[str]):
+        self.fields = fields
+        self.self_obj = self_obj
+        self.references: set[str] = set()
+
+    def visit_Attribute(self, node):
+        if is_field(node, self.self_obj, self.fields):
+            self.references.add(node.attr)
+        self.visit(node.value)
 
 def get_self_obj(node: ast.FunctionDef) -> str:
     return node.args.args[0].arg
@@ -20,7 +31,7 @@ def is_field(node: ast.Attribute, self_obj: str, fields: set[str]) -> bool:
     return is_obj_attribute(node, self_obj) and node.attr in fields
 
 
-def obj_attribute(
+def get_obj_attribute(
     obj: str, attr: str,
     ctx: ast.Load | ast.Store | ast.Del = ast.Load()) -> ast.Attribute:
     return ast.Attribute(value=ast.Name(id=obj, ctx=ast.Load()),
@@ -89,6 +100,11 @@ def is_lens(node: ast.FunctionDef) -> bool:
             d.func.id in ['get', 'put'])
         for d in node.decorator_list)
 
+
+def set_at(node: ast.FunctionDef, v:VersionId):
+        for d in node.decorator_list:
+            if isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id in ['get', 'at']:
+                d.args[0].value = v
 
 def get_at(node: ast.FunctionDef) -> VersionId:
     return [

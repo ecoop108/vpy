@@ -5,7 +5,7 @@ import networkx as nx
 
 VersionId = NewType('VersionId', str)
 
-Lenses = NewType('Lenses', dict[VersionId, dict[VersionId, dict[str,
+Lenses = NewType('Lenses', dict[VersionId, dict[str, dict[VersionId,
                                                                 FunctionDef]]])
 
 

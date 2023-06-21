@@ -1,18 +1,9 @@
 import ast
 from ast import Attribute, ClassDef, FunctionDef, NodeVisitor
 from vpy.lib.lib_types import Graph, Lenses, VersionId
-from vpy.lib.utils import get_decorator, is_lens, get_at, is_obj_attribute
+from vpy.lib.utils import FieldReferenceCollector, get_decorator, get_self_obj, is_lens, get_at, is_obj_attribute
+from collections import defaultdict
 
-
-def path_lookup(g: Graph, v: VersionId, t: VersionId,
-                lenses: Lenses) -> list[tuple[VersionId, VersionId]] | None:
-    lens = lenses[v]
-    if t in lens and lens[t] is not None:
-        return [(v, t)]
-    for w in lens:
-        if (p := path_lookup(g.delete(v), w, t, lenses)) is not None:
-            return [(v, w)] + p
-    return None
 
 
 def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
@@ -20,18 +11,38 @@ def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
     for k in g.all():
         for t in g.all():
             if k != t:
-                base_k, _ = base(g, cls_ast, k.name)
-                base_t, _ = base(g, cls_ast, t.name)
-                if base_k not in lenses:
-                    lenses[base_k] = {}
-                if (lens := lens_lookup(g, k.name, t.name,
-                                        cls_ast)) is not None:
-                    lenses[base_k][base_t] = lens
+                if k.name not in lenses:
+                    lenses[k.name] = defaultdict(dict)
+                if (lens := lens_lookup(g, k.name, t.name, cls_ast)):
+                    for field, lens_node in lens.items():
+                        lenses[k.name][field][t.name] = lens_node
+    return lenses
+
+
+def lenses_to(g: Graph, cls_ast: ClassDef,
+              v: VersionId) -> dict[str, dict[VersionId, FunctionDef]]:
+    """
+    Returns the lenses explicitly defined at version v.
+    """
+    lenses = {}
+    for method in cls_ast.body:
+        if isinstance(method, FunctionDef):
+            decorator = get_decorator(method, 'get')
+            if decorator:
+                at, target, field = [
+                    a.value for a in decorator.args
+                    if isinstance(a, ast.Constant)
+                ]
+                if target == v and g.find_version(
+                        at) is not None and g.find_version(target) is not None:
+                    if field not in lenses:
+                        lenses[field] = {}
+                    lenses[field][at] = method
     return lenses
 
 
 def lenses_at(cls_ast: ClassDef,
-              v: VersionId) -> dict[VersionId, dict[str, FunctionDef]]:
+              v: VersionId) -> dict[str, dict[VersionId, FunctionDef]]:
     """
     Returns the lenses explicitly defined at version v.
     """
@@ -45,24 +56,52 @@ def lenses_at(cls_ast: ClassDef,
                     if isinstance(a, ast.Constant)
                 ]
                 if at == v:
-                    if target not in lenses:
-                        lenses[target] = {}
-                    lenses[target][field] = method
+                    if field not in lenses:
+                        lenses[field] = {}
+                    lenses[field][target] = method
     return lenses
 
 
+def field_lens_lookup(g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef,
+                      field: str) -> list[dict[str, FunctionDef]] | None:
+    """
+    Returns a list of lenses to rewrite field from version v to version t
+    """
+    lenses = lenses_to(g=g, cls_ast=cls_ast, v=v)
+    if field not in lenses:
+        return None
+    if t in lenses[field]:
+        return [{field: lenses[field][t]}]
+    else:
+        for w in lenses[field]:
+            lens = lenses[field][w]
+            result = [{field: lens}]
+            _, fields_w = base(g, cls_ast, w)
+            visitor = FieldReferenceCollector(get_self_obj(lens), fields_w)
+            visitor.visit(lens)
+            for ref in visitor.references:
+                path = field_lens_lookup(g.delete(v), w, t, cls_ast, ref)
+                if path is None:
+                    break
+                result += path
+            else:
+                return result
+        return None
+
+
 def lens_lookup(g: Graph, v: VersionId, t: VersionId,
-                cls_ast: ClassDef) -> dict[str, FunctionDef] | None:
+                cls_ast: ClassDef) -> dict[str, FunctionDef]:
     """
     Returns the lenses from v to t.
     """
-    lenses = lenses_at(cls_ast=cls_ast, v=v)
-    if t in lenses:
-        return lenses[t]
-    base_t, _ = base(g, cls_ast, t)
-    if base_t in lenses:
-        return lenses[base_t]
-    return None
+    _, fields_v = base(g, cls_ast, v)
+    result = {}
+    for field in fields_v:
+        path = field_lens_lookup(g, v, t, cls_ast, field)
+        if path is not None:
+            lens = path[0][field]
+            result[field] = lens
+    return result
 
 
 def _replacement_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
@@ -77,7 +116,7 @@ def _replacement_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
 
 
 def _local_method_lookup(cls_ast: ClassDef, m: str,
-                          v: VersionId) -> FunctionDef | None:
+                         v: VersionId) -> FunctionDef | None:
     methods = [
         m for m in cls_ast.body
         if isinstance(m, ast.FunctionDef) and not is_lens(m) and get_at(m) == v
@@ -89,11 +128,11 @@ def _local_method_lookup(cls_ast: ClassDef, m: str,
 
 
 def _inherited_method_lookup(g: Graph, cls_ast: ClassDef, m: str,
-                              v: VersionId) -> FunctionDef | None:
+                             v: VersionId) -> FunctionDef | None:
     graph = g.delete(v)
     um = [
-        me for me in
-        [method_lookup(graph, cls_ast, m, r) for r in g.parents(v)]
+        me
+        for me in [method_lookup(graph, cls_ast, m, r) for r in g.parents(v)]
         if me is not None
     ]
     return um[0] if len(um) == 1 else None
