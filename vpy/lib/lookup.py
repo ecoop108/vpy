@@ -1,18 +1,16 @@
 import ast
 from ast import Attribute, ClassDef, FunctionDef, NodeVisitor
-from vpy.lib.lib_types import Graph, Lenses, VersionId
+from vpy.lib.lib_types import FieldName, Graph, Lenses, VersionId
 from vpy.lib.utils import FieldReferenceCollector, get_decorator, get_self_obj, is_lens, get_at, is_obj_attribute
 from collections import defaultdict
 
 
 
 def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
-    lenses: Lenses = {}
+    lenses: Lenses = defaultdict(lambda: defaultdict(lambda: defaultdict(FunctionDef)))
     for k in g.all():
         for t in g.all():
             if k != t:
-                if k.name not in lenses:
-                    lenses[k.name] = defaultdict(dict)
                 if (lens := lens_lookup(g, k.name, t.name, cls_ast)):
                     for field, lens_node in lens.items():
                         lenses[k.name][field][t.name] = lens_node
@@ -90,12 +88,12 @@ def field_lens_lookup(g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef,
 
 
 def lens_lookup(g: Graph, v: VersionId, t: VersionId,
-                cls_ast: ClassDef) -> dict[str, FunctionDef]:
+                cls_ast: ClassDef) -> dict[FieldName, FunctionDef]:
     """
     Returns the lenses from v to t.
     """
     _, fields_v = base(g, cls_ast, v)
-    result = {}
+    result: dict[FieldName, FunctionDef] = {}
     for field in fields_v:
         path = field_lens_lookup(g, v, t, cls_ast, field)
         if path is not None:
@@ -157,7 +155,7 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m: str,
 
 
 def base(g: Graph, cls_ast: ClassDef,
-         v: VersionId) -> tuple[VersionId, set[str]]:
+         v: VersionId) -> tuple[VersionId, set[FieldName]]:
 
     class FieldCollector(ast.NodeVisitor):
 
@@ -167,7 +165,7 @@ def base(g: Graph, cls_ast: ClassDef,
                 m.name for m in methods_at(g, cls_ast, v)
                 if _replacement_method_lookup(g, cls_ast, m.name, v) is None
             ]
-            self.fields = set()
+            self.fields: set[FieldName] = set()
 
         def visit_FunctionDef(self, node: FunctionDef):
             if get_at(node) != v:
@@ -180,19 +178,19 @@ def base(g: Graph, cls_ast: ClassDef,
                 if isinstance(target, Attribute) and is_obj_attribute(
                         target, self.self_param):
                     if target.attr not in self.methods:
-                        self.fields.add(target.attr)
+                        self.fields.add(FieldName(target.attr))
 
         def visit_AnnAssign(self, node):
             if isinstance(node.target, Attribute) and is_obj_attribute(
                     node.target, self.self_param):
                 if node.target.attr not in self.methods:
-                    self.fields.add(node.target.attr)
+                    self.fields.add(FieldName(node.target.attr))
 
         def visit_AugAssign(self, node):
             if isinstance(node.target, Attribute) and is_obj_attribute(
                     node.target, self.self_param):
                 if node.target.attr not in self.methods:
-                    self.fields.add(node.target.attr)
+                    self.fields.add(FieldName(node.target.attr))
 
     visitor = FieldCollector()
     visitor.visit(cls_ast)

@@ -4,12 +4,12 @@ from types import ModuleType
 from typing import Type, TypeVar
 
 from pyanalyze.ast_annotator import annotate_code
-from vpy.lib.lib_types import Graph, Version, VersionId
+from vpy.lib.lib_types import FieldName, Graph, Version, VersionId
 import uuid
 
 class FieldReferenceCollector(ast.NodeVisitor):
 
-    def __init__(self, self_obj: str, fields: set[str]):
+    def __init__(self, self_obj: str, fields: set[FieldName]):
         self.fields = fields
         self.self_obj = self_obj
         self.references: set[str] = set()
@@ -27,7 +27,7 @@ def fresh_var() -> str:
     return f"_{str(uuid.uuid4().hex)}"
 
 
-def is_field(node: ast.Attribute, self_obj: str, fields: set[str]) -> bool:
+def is_field(node: ast.Attribute, self_obj: str, fields: set[FieldName]) -> bool:
     return is_obj_attribute(node, self_obj) and node.attr in fields
 
 

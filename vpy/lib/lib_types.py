@@ -1,12 +1,14 @@
 from ast import Constant, FunctionDef, List, keyword
 from copy import deepcopy
-from typing import NewType
+from typing import DefaultDict, NewType
 import networkx as nx
 
 VersionId = NewType('VersionId', str)
 
-Lenses = NewType('Lenses', dict[VersionId, dict[str, dict[VersionId,
+Lenses = NewType('Lenses', DefaultDict[VersionId, DefaultDict[str, DefaultDict[VersionId,
                                                                 FunctionDef]]])
+
+FieldName = NewType('FieldName', str)
 
 
 class Version():
