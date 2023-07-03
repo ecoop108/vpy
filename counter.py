@@ -1,4 +1,3 @@
-from typing_extensions import Self
 from vpy.decorators import at, get, version
 
 
@@ -37,9 +36,9 @@ class Name:
     def lens_a(self):
         return self.w + 4
 
-    # @at('2')
-    # def m(self, other: Self):
-    #     other.xx = 2
+    @at('2')
+    def m(self, other: 'Name'):
+        other.xx = 2
 
     @get('2', '1', 'y')
     def lens_y(self):

@@ -170,7 +170,7 @@ class LensTransformer(ast.NodeTransformer):
 
         for target in node.targets:
             print(ast.dump(node), ast.dump(target))
-            print((target.value.inferred_value.get_type().__name__))
+            print((target.value.inferred_value))
             print('------')
             if isinstance(target, Attribute) and is_field(
                     target, self.self_obj, self.fields[self.v_from]):
