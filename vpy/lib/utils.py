@@ -3,7 +3,7 @@ import inspect
 from types import ModuleType
 from typing import Type, TypeVar
 
-from pyanalyze.ast_annotator import annotate_code
+from pyanalyze.ast_annotator import annotate_code, dump_annotated_code
 from pyanalyze.value import TypedValue
 from vpy.lib.lib_types import FieldName, Graph, Version, VersionId
 import uuid
@@ -34,10 +34,10 @@ def fresh_var() -> str:
 def is_field(node: ast.Attribute, self_obj: str, fields: set[FieldName]) -> bool:
     return is_obj_attribute(node, self_obj) and node.attr in fields
 
-def is_obj_field(node: ast.Attribute, fields: dict[str, FieldName]) -> bool:
-    #TODO: Check this
-    if is_obj_attribute(node, node.value.id) and isinstance(node.inferred_value, TypedValue):
-        node_t = node.inferred_value.get_type()
+#TODO: Check this function: nested attributes
+def is_obj_field(node: ast.Attribute, fields: dict[str, set[FieldName]]) -> bool:
+    if is_obj_attribute(node, node.value.id) and isinstance(node.value.inferred_value, TypedValue):
+        node_t = node.value.inferred_value.get_type()
         if node_t is not None:
             return node.attr in fields[node_t.__name__]
     return False

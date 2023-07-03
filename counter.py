@@ -38,19 +38,14 @@ class Name:
 
     @at('2')
     def m(self, other: 'Name'):
-        other.xx = 2
+        other.z = self.z = 2 + other.z
 
     @get('2', '1', 'y')
     def lens_y(self):
-        # self.xxx()
         return self.z - 1
 
-    # @at('3')
-    # def fx(a):
-    #     a.m(a)
-    #     a.w += 3
 
     @at('1')
     def f(self):
-        self.y = 3
-        return self.y + self.a
+        self.y = self.a = 5
+        return self.a + self.y
