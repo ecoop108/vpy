@@ -14,6 +14,9 @@ class FieldReferenceCollector(ast.NodeVisitor):
         self.self_obj = self_obj
         self.references: set[str] = set()
 
+    # visit function/method call
+
+
     def visit_Attribute(self, node):
         if is_field(node, self.self_obj, self.fields):
             self.references.add(node.attr)

@@ -1,3 +1,4 @@
+from typing_extensions import Self
 from vpy.decorators import at, get, version
 
 
@@ -36,16 +37,21 @@ class Name:
     def lens_a(self):
         return self.w + 4
 
+    # @at('2')
+    # def m(self, other: Self):
+    #     other.xx = 2
+
     @get('2', '1', 'y')
     def lens_y(self):
+        # self.xxx()
         return self.z - 1
 
-    @at('3')
-    def fx(a):
-        a.w += 3
+    # @at('3')
+    # def fx(a):
+    #     a.m(a)
+    #     a.w += 3
 
     @at('1')
-    def f(a):
-        a.y += 3
-        # a.
-        return a.y + a.a
+    def f(self):
+        self.y = 3
+        return self.y + self.a

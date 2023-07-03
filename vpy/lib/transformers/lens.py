@@ -1,11 +1,13 @@
 from ast import Assign, Attribute, BinOp, Call, ClassDef, FunctionDef, Name, Subscript, arg, keyword
 import copy
-from vpy.lib.lib_types import Graph, Lenses, VersionId
-from vpy.lib.utils import FieldReferenceCollector, fresh_var, get_at, get_self_obj, has_get_lens, is_field, get_obj_attribute, set_at
+
+from pyanalyze.annotations import type_from_ast
+from pyanalyze.node_visitor import NodeTransformer
+from vpy.lib.lib_types import FieldName, Graph, Lenses, VersionId
+from vpy.lib.utils import FieldReferenceCollector, fresh_var, get_at, get_obj_attribute, get_self_obj, has_get_lens, is_field
 import ast
 
-
-def fields_in_function(node: FunctionDef, fields: set[str]) -> set[str]:
+def fields_in_function(node: FunctionDef, fields: set[FieldName]) -> set[str]:
     visitor = FieldReferenceCollector(get_self_obj(node), fields)
     visitor.visit(node)
     return visitor.references
@@ -13,7 +15,7 @@ def fields_in_function(node: FunctionDef, fields: set[str]) -> set[str]:
 
 class PutLens(ast.NodeTransformer):
 
-    def __init__(self, fields: set[str]):
+    def __init__(self, fields: set[FieldName]):
         self._fields = fields
 
     def visit_FunctionDef(self, node):
@@ -41,7 +43,7 @@ class PutLens(ast.NodeTransformer):
 class MethodRewriteTransformer(ast.NodeTransformer):
 
     def __init__(self, g: Graph, cls_ast: ClassDef, fields: dict[VersionId,
-                                                                 set[str]],
+                                                                 set[FieldName]],
                  get_lenses: Lenses, target: VersionId):
         self.g = g
         self.cls_ast = cls_ast
@@ -65,7 +67,7 @@ class MethodRewriteTransformer(ast.NodeTransformer):
 class LensTransformer(ast.NodeTransformer):
 
     def __init__(self, g: Graph, cls_ast: ClassDef,
-                 fields: dict[VersionId, set[str]], get_lenses: Lenses,
+                 fields: dict[VersionId, set[FieldName]], get_lenses: Lenses,
                  v_target: VersionId, v_from: VersionId, self_obj: str):
         self.g = g
         self.cls_ast = cls_ast
@@ -83,7 +85,6 @@ class LensTransformer(ast.NodeTransformer):
             lens_node = self.get_lenses[self.v_target][field][self.v_from]
             lens_ver = get_at(lens_node)
             if lens_ver != self.v_from:
-
                 old_v_target = self.v_target
                 self.v_target = lens_ver
                 rw_exprs = self.rw_assign(target, value)
@@ -93,9 +94,10 @@ class LensTransformer(ast.NodeTransformer):
                 for expr in rw_exprs:
                     exprs.extend(self.visit(expr))
                 self.v_from = old_v_from
+
             else:
-                if len(fields_in_function(
-                        lens_node, {target.attr})) > 0 and value is not None:
+                if value is not None and len(fields_in_function(lens_node, {FieldName(
+                        target.attr)})) > 0:
                     # change field name to lens method call
                     self_attr = get_obj_attribute(obj=self.self_obj,
                                                   attr=lens_node.name)
@@ -122,6 +124,7 @@ class LensTransformer(ast.NodeTransformer):
                     lens_target = get_obj_attribute(obj=self.self_obj,
                                                     attr=field,
                                                     ctx=ast.Store())
+                    lens_target.value.inferred_value = target.value.inferred_value
                     lens_assign = Assign(targets=[lens_target],
                                          value=self_call)
                     ast.fix_missing_locations(lens_assign)
@@ -166,6 +169,9 @@ class LensTransformer(ast.NodeTransformer):
             node.value = local_var
 
         for target in node.targets:
+            print(ast.dump(node), ast.dump(target))
+            print((target.value.inferred_value.get_type().__name__))
+            print('------')
             if isinstance(target, Attribute) and is_field(
                     target, self.self_obj, self.fields[self.v_from]):
                 exprs += self.rw_assign(target, node.value)
