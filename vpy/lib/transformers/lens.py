@@ -106,13 +106,16 @@ class LensTransformer(ast.NodeTransformer):
                     self_attr.value.inferred_value = target.value.inferred_value
                     # add value as argument
                     keywords = [keyword(arg=target.attr, value=value)]
-                    # add fields referenced in lens as arguments
+                    # Add fields referenced in lens as arguments
                     references = fields_in_function(lens_node,
                                                     self.fields[self.v_from])
-                    for f in references:
-                        if f != target.attr:
-                            f_value = self.visit(ast.parse(f'self.{f}'))
-                            keywords.append(keyword(arg=f, value=f_value))
+                    for ref in references:
+                        if ref != target.attr:
+                            attr = get_obj_attribute('self', ref)
+                            attr.value.inferred_value = target.value.inferred_value
+                            self.visit(attr)
+                            keywords.append(keyword(arg=ref, value=attr))
+
                     self_call = Call(func=self_attr,
                                      args=[],
                                      keywords=keywords)
@@ -163,10 +166,13 @@ class LensTransformer(ast.NodeTransformer):
         # TODO: Does not work for nested obj attributes?
         target_references = set()
         for target in node.targets:
-            visitor = FieldReferenceCollector(target.value.id,
-                                              self.fields[self.v_from])
-            visitor.visit(target)
-            target_references = target_references.union(visitor.references)
+            #TODO: Fix this
+            if isinstance(target, Attribute) and isinstance(
+                    target.value, Name):
+                visitor = FieldReferenceCollector(target.value.id,
+                                                  self.fields[self.v_from])
+                visitor.visit(target)
+                target_references = target_references.union(visitor.references)
         if len(target_references) > 0:
             local_var = Name(id=fresh_var(), ctx=ast.Store())
             local_assign = Assign(targets=[local_var], value=node.value)
@@ -225,3 +231,11 @@ class LensTransformer(ast.NodeTransformer):
             lens_node_copy = visitor.visit(lens_node)
             self.cls_ast.body.append(lens_node_copy)
         return self_call
+
+    def visit_Call(self, node: Call):
+        # Rewrite function call arguments if needed
+        for arg in node.args:
+            self.generic_visit(arg)
+        for kw in node.keywords:
+            self.generic_visit(kw.value)
+        return node
