@@ -101,9 +101,10 @@ class LensTransformer(ast.NodeTransformer):
                                            {FieldName(target.attr)})) > 0:
                     # change field name to lens method call
                     #TODO: nested objects
-                    self_attr = get_obj_attribute(obj=target.value.id,
-                                                  attr=lens_node.name)
-                    self_attr.value.inferred_value = target.value.inferred_value
+                    self_attr = get_obj_attribute(
+                        obj=target.value.id,
+                        attr=lens_node.name,
+                        obj_type=target.value.inferred_value)
                     # add value as argument
                     keywords = [keyword(arg=target.attr, value=value)]
                     # Add fields referenced in lens as arguments
@@ -111,8 +112,10 @@ class LensTransformer(ast.NodeTransformer):
                                                     self.fields[self.v_from])
                     for ref in references:
                         if ref != target.attr:
-                            attr = get_obj_attribute('self', ref)
-                            attr.value.inferred_value = target.value.inferred_value
+                            attr = get_obj_attribute(
+                                'self',
+                                ref,
+                                obj_type=target.value.inferred_value)
                             self.visit(attr)
                             keywords.append(keyword(arg=ref, value=attr))
 
@@ -127,10 +130,11 @@ class LensTransformer(ast.NodeTransformer):
                         self.put_lenses[(self.v_from,
                                          self.v_target)] = put_lens
                         self.cls_ast.body.append(put_lens)
-                    lens_target = get_obj_attribute(obj=target.value.id,
-                                                    attr=field,
-                                                    ctx=ast.Store())
-                    lens_target.value.inferred_value = target.value.inferred_value
+                    lens_target = get_obj_attribute(
+                        obj=target.value.id,
+                        attr=field,
+                        ctx=ast.Store(),
+                        obj_type=target.value.inferred_value)
                     lens_assign = Assign(targets=[lens_target],
                                          value=self_call)
                     ast.fix_missing_locations(lens_assign)
@@ -220,8 +224,9 @@ class LensTransformer(ast.NodeTransformer):
             return node
         lens_node = self.get_lenses[self.v_from][node.attr][self.v_target]
         #TODO: Nested attributes
-        self_attr = get_obj_attribute(obj=node.value.id, attr=lens_node.name)
-        self_attr.value.inferred_value = node.value.inferred_value
+        self_attr = get_obj_attribute(obj=node.value.id,
+                                      attr=lens_node.name,
+                                      obj_type=node.value.inferred_value)
         self_call = Call(func=self_attr, args=[], keywords=[])
         if not has_get_lens(self.cls_ast, lens_node):
             lens_node_copy = copy.deepcopy(lens_node)

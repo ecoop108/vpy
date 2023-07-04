@@ -4,9 +4,10 @@ from types import ModuleType
 from typing import Type, TypeVar
 
 from pyanalyze.ast_annotator import annotate_code
-from pyanalyze.value import TypedValue
+from pyanalyze.value import AnySource, AnyValue, TypedValue, Value
 from vpy.lib.lib_types import FieldName, Graph, Version, VersionId
 import uuid
+
 
 class FieldReferenceCollector(ast.NodeVisitor):
 
@@ -17,11 +18,11 @@ class FieldReferenceCollector(ast.NodeVisitor):
 
     # visit function/method call
 
-
     def visit_Attribute(self, node):
         if is_field(node, self.self_obj, self.fields):
             self.references.add(node.attr)
         self.visit(node.value)
+
 
 def get_self_obj(node: ast.FunctionDef) -> str:
     return node.args.args[0].arg
@@ -31,13 +32,17 @@ def fresh_var() -> str:
     return f"_{str(uuid.uuid4().hex)}"
 
 
-def is_field(node: ast.Attribute, self_obj: str, fields: set[FieldName]) -> bool:
+def is_field(node: ast.Attribute, self_obj: str,
+             fields: set[FieldName]) -> bool:
     return is_obj_attribute(node, self_obj) and node.attr in fields
 
+
 #TODO: Check this function: nested attributes
-def is_obj_field(node: ast.Attribute, fields: dict[str, set[FieldName]]) -> bool:
+def is_obj_field(node: ast.Attribute, fields: dict[str,
+                                                   set[FieldName]]) -> bool:
     print(ast.dump(node))
-    if is_obj_attribute(node, node.value.id) and isinstance(node.value.inferred_value, TypedValue):
+    if is_obj_attribute(node, node.value.id) and isinstance(
+            node.value.inferred_value, TypedValue):
         node_t = node.value.inferred_value.get_type()
         if node_t is not None:
             return node.attr in fields[node_t.__name__]
@@ -45,11 +50,16 @@ def is_obj_field(node: ast.Attribute, fields: dict[str, set[FieldName]]) -> bool
 
 
 def get_obj_attribute(
-    obj: str, attr: str,
-    ctx: ast.Load | ast.Store | ast.Del = ast.Load()) -> ast.Attribute:
-    return ast.Attribute(value=ast.Name(id=obj, ctx=ast.Load()),
-                         attr=attr,
-                         ctx=ctx)
+    obj: str,
+    attr: str,
+    ctx: ast.Load | ast.Store | ast.Del = ast.Load(),
+    obj_type: Value = AnyValue(AnySource.default)
+) -> ast.Attribute:
+    obj_attr = ast.Attribute(value=ast.Name(id=obj, ctx=ast.Load()),
+                             attr=attr,
+                             ctx=ctx)
+    obj_attr.value.inferred_value = obj_type
+    return obj_attr
 
 
 def has_get_lens(cls_node: ast.ClassDef,
@@ -110,14 +120,15 @@ def parse_class(module: ModuleType, cls: Type) -> tuple[ast.ClassDef, Graph]:
 def is_lens(node: ast.FunctionDef) -> bool:
     return any(
         isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
-            d.func.id in ['get', 'put'])
-        for d in node.decorator_list)
+            d.func.id in ['get', 'put']) for d in node.decorator_list)
 
 
-def set_at(node: ast.FunctionDef, v:VersionId):
-        for d in node.decorator_list:
-            if isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id in ['get', 'at']:
-                d.args[0].value = v
+def set_at(node: ast.FunctionDef, v: VersionId):
+    for d in node.decorator_list:
+        if isinstance(d, ast.Call) and isinstance(
+                d.func, ast.Name) and d.func.id in ['get', 'at']:
+            d.args[0].value = v
+
 
 def get_at(node: ast.FunctionDef) -> VersionId:
     return [
