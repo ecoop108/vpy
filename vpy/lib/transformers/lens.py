@@ -6,6 +6,7 @@ from vpy.lib.utils import FieldReferenceCollector, fresh_var, get_at, get_obj_at
 import ast
 
 
+#TODO: What kind of fields? Only self?
 def fields_in_function(node: FunctionDef, fields: set[FieldName]) -> set[str]:
     visitor = FieldReferenceCollector(get_self_obj(node), fields)
     visitor.visit(node)
@@ -31,8 +32,7 @@ class PutLens(ast.NodeTransformer):
         return node
 
     def visit_Attribute(self, node):
-        if is_field(node, self.self_obj, self._fields) and isinstance(
-                node.ctx, ast.Load):
+        if is_field(node, self._fields) and isinstance(node.ctx, ast.Load):
             node = Name(id=node.attr, ctx=ast.Load())
         else:
             node.value = self.visit(node.value)
@@ -77,32 +77,36 @@ class LensTransformer(ast.NodeTransformer):
         self.put_lenses = {}
         self.self_obj = self_obj
 
+    def step_rw_assign(self, target: Attribute, value: ast.expr | None,
+                       lens_ver) -> list[ast.Expr]:
+        exprs = []
+        old_v_target = self.v_target
+        self.v_target = lens_ver
+        rw_exprs = self.rw_assign(target, value)
+        self.v_target = old_v_target
+        old_v_from = self.v_from
+        self.v_from = lens_ver
+        for expr in rw_exprs:
+            exprs.extend(self.visit(expr))
+        self.v_from = old_v_from
+        return exprs
+
     def rw_assign(self, target: Attribute,
                   value: ast.expr | None) -> list[ast.Expr]:
-        exprs = []
-        # iterate over lenses of class type(target.attr)
+        #TODO: iterate over lenses of class type(target.attr)
         for field in self.get_lenses[self.v_target]:
             lens_node = self.get_lenses[self.v_target][field][self.v_from]
             lens_ver = get_at(lens_node)
             if lens_ver != self.v_from:
-                old_v_target = self.v_target
-                self.v_target = lens_ver
-                rw_exprs = self.rw_assign(target, value)
-                self.v_target = old_v_target
-                old_v_from = self.v_from
-                self.v_from = lens_ver
-                for expr in rw_exprs:
-                    exprs.extend(self.visit(expr))
-                self.v_from = old_v_from
-
+                return self.step_rw_assign(target, value, lens_ver)
             else:
+                exprs = []
                 if value is not None and len(
                         fields_in_function(lens_node,
                                            {FieldName(target.attr)})) > 0:
                     # change field name to lens method call
-                    #TODO: nested objects
                     self_attr = get_obj_attribute(
-                        obj=target.value.id,
+                        obj=target.value,
                         attr=lens_node.name,
                         obj_type=target.value.inferred_value)
                     # add value as argument
@@ -113,10 +117,10 @@ class LensTransformer(ast.NodeTransformer):
                     for ref in references:
                         if ref != target.attr:
                             attr = get_obj_attribute(
-                                'self',
-                                ref,
+                                obj=target.value,
+                                attr=ref,
                                 obj_type=target.value.inferred_value)
-                            self.visit(attr)
+                            attr = self.visit(attr)
                             keywords.append(keyword(arg=ref, value=attr))
 
                     self_call = Call(func=self_attr,
@@ -130,8 +134,10 @@ class LensTransformer(ast.NodeTransformer):
                         self.put_lenses[(self.v_from,
                                          self.v_target)] = put_lens
                         self.cls_ast.body.append(put_lens)
+
+                    # Rewrite assignment using put lens
                     lens_target = get_obj_attribute(
-                        obj=target.value.id,
+                        obj=target.value,
                         attr=field,
                         ctx=ast.Store(),
                         obj_type=target.value.inferred_value)
@@ -139,13 +145,14 @@ class LensTransformer(ast.NodeTransformer):
                                          value=self_call)
                     ast.fix_missing_locations(lens_assign)
                     exprs.append(lens_assign)
-        return exprs
+                    return exprs
+        return []
 
     def visit_AugAssign(self, node):
         if node.value:
             node.value = self.visit(node.value)
         if isinstance(node.target, Attribute) and is_field(
-                node.target, self.self_obj, self.fields[self.v_from]):
+                node.target, self.fields[self.v_from]):
             left_node = copy.deepcopy(node.target)
             left_node.ctx = ast.Load()
             unfold = BinOp(left=left_node, right=node.value, op=node.op)
@@ -160,23 +167,27 @@ class LensTransformer(ast.NodeTransformer):
         if node.value:
             node.value = self.visit(node.value)
         if isinstance(node.target, Attribute) and is_field(
-                node.target, self.self_obj, self.fields[self.v_from]):
+                node.target, self.fields[self.v_from]):
             return self.rw_assign(node.target, node.value)
         return node
 
     def visit_Assign(self, node):
         exprs = []
+        # Rewrite right-hand side of assignment.
         node.value = self.visit(node.value)
-        # TODO: Does not work for nested obj attributes?
+        # Collect all field references in left-hand side of assignment.
         target_references = set()
         for target in node.targets:
-            #TODO: Fix this
-            if isinstance(target, Attribute) and isinstance(
-                    target.value, Name):
-                visitor = FieldReferenceCollector(target.value.id,
+            if isinstance(target, Attribute):
+                #TODO: Fix this None?
+                visitor = FieldReferenceCollector(None,
                                                   self.fields[self.v_from])
                 visitor.visit(target)
                 target_references = target_references.union(visitor.references)
+        # If any exist, we need to rewrite the assignment. We create a fresh
+        # var to store the right-hand side of the assignment since a single
+        # assignment may be rewritten to a set of assignment (i.e. all fields
+        # affected)
         if len(target_references) > 0:
             local_var = Name(id=fresh_var(), ctx=ast.Store())
             local_assign = Assign(targets=[local_var], value=node.value)
@@ -194,7 +205,7 @@ class LensTransformer(ast.NodeTransformer):
             elif isinstance(target, ast.Tuple):
                 fields = [
                     el for el in target.elts if isinstance(el, Attribute)
-                    and is_field(el, self.self_obj, self.fields[self.v_from])
+                    and is_field(el, self.fields[self.v_from])
                 ]
                 if len(fields) == 0:
                     exprs.append(node)
@@ -221,10 +232,11 @@ class LensTransformer(ast.NodeTransformer):
         if not (is_obj_field(node,
                              {self.cls_ast.name: self.fields[self.v_from]})
                 and isinstance(node.ctx, ast.Load)):
+            node = self.generic_visit(node)
             return node
+        #TODO: Nested attributes, lenses
         lens_node = self.get_lenses[self.v_from][node.attr][self.v_target]
-        #TODO: Nested attributes
-        self_attr = get_obj_attribute(obj=node.value.id,
+        self_attr = get_obj_attribute(obj=node.value,
                                       attr=lens_node.name,
                                       obj_type=node.value.inferred_value)
         self_call = Call(func=self_attr, args=[], keywords=[])

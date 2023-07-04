@@ -5,9 +5,9 @@ from vpy.lib.utils import FieldReferenceCollector, get_decorator, get_self_obj, 
 from collections import defaultdict
 
 
-
 def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
-    lenses: Lenses = defaultdict(lambda: defaultdict(lambda: defaultdict(FunctionDef)))
+    lenses: Lenses = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(FunctionDef)))
     for k in g.all():
         for t in g.all():
             if k != t:
@@ -175,20 +175,19 @@ def base(g: Graph, cls_ast: ClassDef,
 
         def visit_Assign(self, node):
             for target in node.targets:
-                if isinstance(target, Attribute) and is_obj_attribute(
-                        target, self.self_param):
+                if isinstance(target, Attribute) and is_obj_attribute(target):
                     if target.attr not in self.methods:
                         self.fields.add(FieldName(target.attr))
 
         def visit_AnnAssign(self, node):
             if isinstance(node.target, Attribute) and is_obj_attribute(
-                    node.target, self.self_param):
+                    node.target):
                 if node.target.attr not in self.methods:
                     self.fields.add(FieldName(node.target.attr))
 
         def visit_AugAssign(self, node):
             if isinstance(node.target, Attribute) and is_obj_attribute(
-                    node.target, self.self_param):
+                    node.target):
                 if node.target.attr not in self.methods:
                     self.fields.add(FieldName(node.target.attr))
 

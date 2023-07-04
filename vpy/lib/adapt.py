@@ -13,7 +13,6 @@ from vpy.typechecker.checker import check_cls
 
 def tr_class(mod, cls_ast: ClassDef, v: VersionId) -> ClassDef:
     g = graph(cls_ast)
-    tr_cls_ast = copy.deepcopy(cls_ast)
     status, err = check_cls(mod, cls_ast)
     if not status:
         raise Exception(err)
@@ -26,16 +25,16 @@ def tr_class(mod, cls_ast: ClassDef, v: VersionId) -> ClassDef:
                 if k.name not in lenses:
                     lenses[k.name] = defaultdict(dict)
                 if (lens := lookup.lens_lookup(
-                    g, k.name, t.name, tr_cls_ast)):
+                    g, k.name, t.name, cls_ast)):
                     for field, lens_node in lens.items():
                         lenses[k.name][field][t.name] = lens_node
-    tr_cls_ast = SelectMethodsTransformer(g=g, v=v).visit(tr_cls_ast)
-    tr_cls_ast = MethodRewriteTransformer(g=g,
-                                 cls_ast=tr_cls_ast,
+    cls_ast = SelectMethodsTransformer(g=g, v=v).visit(cls_ast)
+    cls_ast = MethodRewriteTransformer(g=g,
+                                 cls_ast=cls_ast,
                                  fields=fields,
                                  get_lenses=lenses,
-                                 target=v).visit(tr_cls_ast)
-    tr_cls_ast.name += '_' + v
-    if tr_cls_ast.body == []:
-        tr_cls_ast.body.append(ast.Pass())
-    return remove_decorators(tr_cls_ast)
+                                 target=v).visit(cls_ast)
+    cls_ast.name += '_' + v
+    if cls_ast.body == []:
+        cls_ast.body.append(ast.Pass())
+    return remove_decorators(cls_ast)

@@ -13,13 +13,12 @@ class FieldReferenceCollector(ast.NodeVisitor):
 
     def __init__(self, self_obj: str, fields: set[FieldName]):
         self.fields = fields
-        self.self_obj = self_obj
         self.references: set[str] = set()
 
     # visit function/method call
 
     def visit_Attribute(self, node):
-        if is_field(node, self.self_obj, self.fields):
+        if is_field(node, self.fields):
             self.references.add(node.attr)
         self.visit(node.value)
 
@@ -32,16 +31,16 @@ def fresh_var() -> str:
     return f"_{str(uuid.uuid4().hex)}"
 
 
-def is_field(node: ast.Attribute, self_obj: str,
-             fields: set[FieldName]) -> bool:
-    return is_obj_attribute(node, self_obj) and node.attr in fields
+# TODO: fields should be dict[ClassName, set[FieldName]]
+def is_field(node: ast.Attribute, fields: set[FieldName]) -> bool:
+    return is_obj_attribute(node) and node.attr in fields
 
 
 #TODO: Check this function: nested attributes
 def is_obj_field(node: ast.Attribute, fields: dict[str,
                                                    set[FieldName]]) -> bool:
-    if is_obj_attribute(node, node.value.id) and isinstance(
-            node.value.inferred_value, TypedValue):
+
+    if is_obj_attribute(node):
         node_t = node.value.inferred_value.get_type()
         if node_t is not None:
             return node.attr in fields[node_t.__name__]
@@ -49,12 +48,12 @@ def is_obj_field(node: ast.Attribute, fields: dict[str,
 
 
 def get_obj_attribute(
-    obj: str,
+    obj: ast.expr,
     attr: str,
     ctx: ast.Load | ast.Store | ast.Del = ast.Load(),
     obj_type: Value = AnyValue(AnySource.default)
 ) -> ast.Attribute:
-    obj_attr = ast.Attribute(value=ast.Name(id=obj, ctx=ast.Load()),
+    obj_attr = ast.Attribute(value=obj,
                              attr=attr,
                              ctx=ctx)
     obj_attr.value.inferred_value = obj_type
@@ -81,10 +80,11 @@ def has_put_lens(cls_node: ast.ClassDef,
     return False
 
 
-# TODO: fix for nested attributes
-def is_obj_attribute(node: ast.Attribute, obj: str) -> bool:
-    if isinstance(node.value, ast.Name) and node.value.id == obj:
-        return True
+def is_obj_attribute(node: ast.Attribute) -> bool:
+    if isinstance(node.value.inferred_value, TypedValue):
+        node_t = node.value.inferred_value.get_type()
+        if node_t is not None:
+            return True
     return False
 
 
