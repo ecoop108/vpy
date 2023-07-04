@@ -238,9 +238,8 @@ class LensTransformer(ast.NodeTransformer):
         return self_call
 
     def visit_Call(self, node: Call):
-        # Rewrite function call arguments if needed
-        for arg in node.args:
-            self.generic_visit(arg)
-        for kw in node.keywords:
-            self.generic_visit(kw.value)
+        for index, arg in enumerate(node.args):
+            node.args[index] = self.visit(arg)
+        for index, kw in enumerate(node.keywords):
+            node.keywords[index].value = self.visit(kw.value)
         return node

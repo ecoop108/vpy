@@ -40,7 +40,6 @@ def is_field(node: ast.Attribute, self_obj: str,
 #TODO: Check this function: nested attributes
 def is_obj_field(node: ast.Attribute, fields: dict[str,
                                                    set[FieldName]]) -> bool:
-    print(ast.dump(node))
     if is_obj_attribute(node, node.value.id) and isinstance(
             node.value.inferred_value, TypedValue):
         node_t = node.value.inferred_value.get_type()

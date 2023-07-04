@@ -17,7 +17,7 @@ class Name:
     @get('full', 'start', 'first')
     def lens_first(self) -> str:
         if ' ' in self.full_name:
-            first = self.full_name.split1(' ')[0]
+            first = self.full_name.split(' ')[0]
             return first
         return self.full_name
 
@@ -38,6 +38,7 @@ class Name:
 
     @at('full')
     def get(self):
+        print(self.full_name)
         return self.full_name
 
     @at('full')
