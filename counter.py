@@ -44,7 +44,6 @@ class Name:
     def lens_y(self):
         return self.z - 1
 
-
     @at('1')
     def f(self):
         self.y = self.a = 5

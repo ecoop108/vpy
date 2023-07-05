@@ -57,8 +57,7 @@ class MethodRewriteTransformer(ast.NodeTransformer):
 
         self_obj = node.args.args[0].arg
         lens_rw = LensTransformer(self.g, self.cls_ast, self.fields,
-                                  self.get_lenses, self.v_target, v_from,
-                                  self_obj)
+                                  self.get_lenses, self.v_target, v_from)
         lens_rw.generic_visit(node)
         return node
 
@@ -67,7 +66,7 @@ class LensTransformer(ast.NodeTransformer):
 
     def __init__(self, g: Graph, cls_ast: ClassDef,
                  fields: dict[VersionId, set[FieldName]], get_lenses: Lenses,
-                 v_target: VersionId, v_from: VersionId, self_obj: str):
+                 v_target: VersionId, v_from: VersionId):
         self.g = g
         self.cls_ast = cls_ast
         self.fields = fields
@@ -75,20 +74,18 @@ class LensTransformer(ast.NodeTransformer):
         self.v_target = v_target
         self.v_from = v_from
         self.put_lenses = {}
-        self.self_obj = self_obj
 
     def step_rw_assign(self, target: Attribute, value: ast.expr | None,
                        lens_ver) -> list[ast.Expr]:
         exprs = []
-        old_v_target = self.v_target
-        self.v_target = lens_ver
-        rw_exprs = self.rw_assign(target, value)
-        self.v_target = old_v_target
-        old_v_from = self.v_from
-        self.v_from = lens_ver
+        visitor = copy.deepcopy(self)
+        visitor.v_target = lens_ver
+        visitor.v_from = self.v_from
+        rw_exprs = visitor.rw_assign(target, value)
+        visitor.v_from = lens_ver
+        visitor.v_target = self.v_target
         for expr in rw_exprs:
-            exprs.extend(self.visit(expr))
-        self.v_from = old_v_from
+            exprs.extend(visitor.visit(expr))
         return exprs
 
     def rw_assign(self, target: Attribute,
