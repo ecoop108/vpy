@@ -4,11 +4,15 @@ from types import ModuleType
 from networkx import find_cycle
 from networkx.exception import NetworkXNoCycle
 from vpy.lib.lib_types import Graph
-from vpy.lib.lookup import base, field_lens_lookup, lens_lookup, method_lookup, methods_at
-from vpy.lib.utils import FieldReferenceCollector, get_at, get_self_obj, graph
+from vpy.lib.lookup import fields_lookup, field_lens_lookup, lens_lookup, method_lookup, methods_at
+from vpy.lib.utils import FieldReferenceCollector, get_at, get_self_obj, graph, parse_module
 
-# def check_module(module: ModuleType, cls:Type):
-#     return check_cls(module)
+def check_module(module: ModuleType):
+    mod_ast = parse_module(module)
+    for node in mod_ast.body:
+        if isinstance(node, ClassDef):
+            return check_cls(module, node)
+    # return check_cls(module)
 
 
 def check_cls(module: ModuleType, cls_ast: ClassDef) -> tuple[bool, list[str]]:
@@ -45,7 +49,7 @@ def check_missing_lenses(g: Graph,
         for m in methods_at(g, cls_ast, v.name):
             mver = get_at(m)
             if mver != v.name:
-                _, fields_m = base(g, cls_ast, mver)
+                _, fields_m = fields_lookup(g, cls_ast, mver)
                 visitor = FieldReferenceCollector(get_self_obj(m), fields_m)
                 visitor.visit(m)
                 path = lens_lookup(g, mver, v.name, cls_ast)

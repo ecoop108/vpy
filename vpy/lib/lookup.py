@@ -74,7 +74,7 @@ def field_lens_lookup(g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef,
         for w in lenses[field]:
             lens = lenses[field][w]
             result = [{field: lens}]
-            _, fields_w = base(g, cls_ast, w)
+            _, fields_w = fields_lookup(g, cls_ast, w)
             visitor = FieldReferenceCollector(get_self_obj(lens), fields_w)
             visitor.visit(lens)
             for ref in visitor.references:
@@ -92,7 +92,7 @@ def lens_lookup(g: Graph, v: VersionId, t: VersionId,
     """
     Returns the lenses from v to t.
     """
-    _, fields_v = base(g, cls_ast, v)
+    _, fields_v = fields_lookup(g, cls_ast, v)
     result: dict[FieldName, FunctionDef] = {}
     for field in fields_v:
         path = field_lens_lookup(g, v, t, cls_ast, field)
@@ -154,7 +154,7 @@ def method_lookup(g: Graph, cls_ast: ClassDef, m: str,
     return None
 
 
-def base(g: Graph, cls_ast: ClassDef,
+def fields_lookup(g: Graph, cls_ast: ClassDef,
          v: VersionId) -> tuple[VersionId, set[FieldName]]:
 
     class FieldCollector(ast.NodeVisitor):
@@ -195,7 +195,7 @@ def base(g: Graph, cls_ast: ClassDef,
     visitor.visit(cls_ast)
     inherited = set()
     for p in g.parents(v):
-        _, fields = base(g.delete(v), cls_ast, p)
+        _, fields = fields_lookup(g.delete(v), cls_ast, p)
         for field in fields:
             inherited.add(field)
 
@@ -203,10 +203,10 @@ def base(g: Graph, cls_ast: ClassDef,
                                        for field in visitor.fields):
         return (v, visitor.fields)
     for p in g.parents(v):
-        back = base(g, cls_ast, p)
+        back = fields_lookup(g, cls_ast, p)
         if back is not None:
             return back
-    return None
+    return (v, set())
 
 
 def methods_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[FunctionDef]:

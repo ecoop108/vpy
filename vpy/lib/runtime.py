@@ -2,7 +2,7 @@ import ast
 import inspect
 import importlib
 from vpy.lib.slice import eval_slice
-from vpy.lib.utils import remove_decorators
+from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
 
 
 class ReplaceCallsTransformer(ast.NodeTransformer):
@@ -31,7 +31,7 @@ def run(fun, version, *args, **kwargs):
     f_ast = ast.parse(src)
     for cls_name in classes:
         f_ast = ReplaceCallsTransformer(cls_name, version).visit(f_ast)
-    f_ast = remove_decorators(f_ast)
+    f_ast = RemoveDecoratorsTransformer().visit(f_ast)
 
     # register new classes
     globs = fun.__globals__

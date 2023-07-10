@@ -4,19 +4,13 @@ from typing import Type
 from vpy.lib.adapt import tr_class
 
 from vpy.lib.lib_types import VersionId
+from vpy.lib.transformers.module import ModuleTransformer
 from vpy.lib.utils import parse_class, parse_module
 
 
 def rw_module(module: ModuleType, v: VersionId): # -> ModuleType
-    module_ast = parse_module(module)
-    classes = [(node) for node in module_ast.body
-               if isinstance(node, ast.ClassDef)]
-    slices = []
-    for cls_ast in classes:
-        slices.append(
-            ast.unparse(ast.fix_missing_locations(tr_class(module, cls_ast,
-                                                           v))))
-    return slices
+    mod_ast = ModuleTransformer(v).visit(parse_module(module))
+    return [ast.unparse(ast.fix_missing_locations(mod_ast))]
 
 
 def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:

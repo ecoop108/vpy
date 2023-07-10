@@ -36,7 +36,7 @@ def is_field(node: ast.Attribute, fields: set[FieldName]) -> bool:
     return is_obj_attribute(node) and node.attr in fields
 
 
-#TODO: Check this function: nested attributes
+# TODO: Check this function: nested attributes
 def is_obj_field(node: ast.Attribute, fields: dict[str,
                                                    set[FieldName]]) -> bool:
 
@@ -115,6 +115,9 @@ def parse_class(module: ModuleType, cls: Type) -> tuple[ast.ClassDef, Graph]:
     g = graph(cls_ast)
     return (cls_ast, g)
 
+def get_module_classes(module_ast: ast.Module) -> list[ast.ClassDef]:
+    return [(node) for node in module_ast.body
+               if isinstance(node, ast.ClassDef)]
 
 def is_lens(node: ast.FunctionDef) -> bool:
     return any(
@@ -146,17 +149,3 @@ def get_decorator(node: ast.FunctionDef,
 
 
 T = TypeVar('T', bound=ast.AST)
-
-
-def remove_decorators(node: T) -> T:
-    remove = ['at', 'version', 'run', 'get', 'put']
-    for child in ast.walk(node):
-        new_decorators = []
-        if isinstance(child, (ast.FunctionDef, ast.ClassDef)):
-            for decorator in child.decorator_list:
-                if isinstance(decorator, ast.Call) and isinstance(
-                        decorator.func, ast.Name):
-                    if decorator.func.id not in remove:
-                        new_decorators.append(decorator)
-            child.decorator_list = new_decorators
-    return node

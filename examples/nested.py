@@ -36,13 +36,19 @@ class Name:
 
     @get('start', 'full', 'full_name')
     def lens_full(self):
-        return f"{self.first} {self.last}"
+        return f"{self.first} {self.last} {self.mirror.first}"
+
+
+    # @at('start')
+    # def set_mirror_last(self, some_name):
+    #     print(random.choice([1,2,3]))
+    #     self.mirror.last = some_name
+    #     print(self.mirror.last)
 
     @at('start')
-    def set_mirror_last(self, some_name):
-        print(random.choice([1,2,3]))
-        self.mirror.last = some_name
-        print(self.mirror.last)
+    def set_mirror(self, other):
+        self.mirror = other
+
 
 
 @run('full')
