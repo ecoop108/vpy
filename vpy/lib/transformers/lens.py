@@ -1,8 +1,14 @@
 from ast import Assign, Attribute, BinOp, Call, ClassDef, FunctionDef, Name, Subscript, arg, keyword
 import copy
+import importlib.util
+
+from pyanalyze.annotations import type_from_value
+from pyanalyze.ast_annotator import dump_annotated_code
+from pyanalyze.value import KnownValue, TypedValue
 
 from vpy.lib.lib_types import FieldName, Graph, Lenses, VersionId
-from vpy.lib.utils import FieldReferenceCollector, fresh_var, get_at, get_obj_attribute, get_self_obj, has_get_lens, is_field, is_obj_field
+from vpy.lib.lookup import fields_lookup
+from vpy.lib.utils import FieldReferenceCollector, fresh_var, get_at, get_obj_attribute, get_self_obj, has_get_lens, is_field, is_obj_field, parse_class
 import ast
 
 
@@ -32,7 +38,6 @@ class PutLens(ast.NodeTransformer):
         return node
 
     def visit_Attribute(self, node):
-        print(ast.dump(node), self._fields, is_field(node, self._fields))
         #TODO: Fix this for nested fields
         if is_field(node, self._fields) and isinstance(node.ctx, ast.Load):
             node = Name(id=node.attr, ctx=ast.Load())
@@ -91,13 +96,13 @@ class LensTransformer(ast.NodeTransformer):
     def rw_assign(self, target: Attribute,
                   value: ast.expr | None) -> list[ast.Expr]:
         # TODO: iterate over lenses of class type(target.attr)
+        exprs = []
         for field in self.get_lenses[self.v_target]:
             lens_node = self.get_lenses[self.v_target][field][self.v_from]
             lens_ver = get_at(lens_node)
             if lens_ver != self.v_from:
-                return self.step_rw_assign(target, value, lens_ver)
+                exprs = self.step_rw_assign(target, value, lens_ver)
             else:
-                exprs = []
                 if value is not None and len(
                         fields_in_function(lens_node,
                                            {FieldName(target.attr)})) > 0:
@@ -143,8 +148,7 @@ class LensTransformer(ast.NodeTransformer):
                                          value=self_call)
                     ast.fix_missing_locations(lens_assign)
                     exprs.append(lens_assign)
-                    return exprs
-        return []
+        return exprs
 
     def visit_AugAssign(self, node):
         if node.value:
@@ -242,6 +246,7 @@ class LensTransformer(ast.NodeTransformer):
         self_attr = get_obj_attribute(obj=node.value,
                                       attr=lens_node.name,
                                       obj_type=node.value.inferred_value)
+        self_attr.inferred_value = node.inferred_value
         self_call = Call(func=self_attr, args=[], keywords=[])
         if not has_get_lens(self.cls_ast, lens_node):
             lens_node_copy = copy.deepcopy(lens_node)
@@ -257,4 +262,14 @@ class LensTransformer(ast.NodeTransformer):
             node.args[index] = self.visit(arg)
         for index, kw in enumerate(node.keywords):
             node.keywords[index].value = self.visit(kw.value)
+        print(ast.dump(node.func))
+        if isinstance(node.func.inferred_value, KnownValue) and isinstance(node.func.inferred_value.val, type):
+            cls = node.func.inferred_value.val
+            import sys
+            mod = sys.modules[cls.__module__]
+            cls_ast, g = parse_class(mod, cls)
+            print(fields_lookup(g, cls_ast, self.v_from))
+            for arg in node.args:
+                print(ast.dump(arg))
+            print(cls.__module__)
         return node

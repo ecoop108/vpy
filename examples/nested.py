@@ -8,7 +8,7 @@ class Name:
 
     @at('start')
     def __init__(self, first: str, last: str):
-        self.first: str = first
+        self.first: str = '123'
         self.last: str = last
         self.mirror: 'Name' = Name(first, last)
 
@@ -32,11 +32,11 @@ class Name:
 
     @get('full', 'start', 'mirror')
     def lens_mirror(self) -> 'Name':
-        return Name(self.full_name)
+        return Name(full=self.full_name)
 
     @get('start', 'full', 'full_name')
     def lens_full(self):
-        return f"{self.first} {self.last} {self.mirror.first}"
+        return f"{self.first} {self.last}"
 
 
     # @at('start')
@@ -47,26 +47,33 @@ class Name:
 
     @at('start')
     def set_mirror(self, other):
+        print(self.mirror)
+        a = Name
+        b = a(first='a', last=self.last)
+        print(b.first) # '123'
+        # b = a(full=lens_full(first='a', last=self.lens_last()))
+        # b.lens_first() => 'a'
+
         self.mirror = other
 
 
 
-@run('full')
-def main():
-    obj = Name('Rolling Stones')
-    print(obj.get())
-    print(obj.reverse())
-    obj.set_last("Stoned")
-    print(obj.get())
-    name_switch_context()
+# @run('full')
+# def main():
+#     obj = Name('Rolling Stones')
+#     print(obj.get())
+#     print(obj.reverse())
+#     obj.set_last("Stoned")
+#     print(obj.get())
+#     name_switch_context()
 
 
-@run('start')
-def name_switch_context():
-    obj = Name("Bob", "Dylan")
-    print(obj.get())  # Bob Dylan
-    obj.set_last("Marley")
+# @run('start')
+# def name_switch_context():
+#     obj = Name("Bob", "Dylan")
+#     print(obj.get())  # Bob Dylan
+#     obj.set_last("Marley")
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

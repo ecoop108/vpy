@@ -11,7 +11,10 @@ import uuid
 
 class FieldReferenceCollector(ast.NodeVisitor):
 
-    def __init__(self, self_obj: str, fields: set[FieldName]):
+    def __init__(self,
+                 self_obj: str,
+                 fields: set[FieldName],
+                 cls: Type | None = None):
         self.fields = fields
         self.references: set[str] = set()
 
@@ -19,6 +22,7 @@ class FieldReferenceCollector(ast.NodeVisitor):
 
     def visit_Attribute(self, node):
         if is_field(node, self.fields):
+            # if cls is not None:
             self.references.add(node.attr)
         self.visit(node.value)
 
@@ -47,15 +51,14 @@ def is_obj_field(node: ast.Attribute, fields: dict[str,
     return False
 
 
+#TODO: Maybe add attr_type as param
 def get_obj_attribute(
     obj: ast.expr,
     attr: str,
     ctx: ast.Load | ast.Store | ast.Del = ast.Load(),
     obj_type: Value = AnyValue(AnySource.default)
 ) -> ast.Attribute:
-    obj_attr = ast.Attribute(value=obj,
-                             attr=attr,
-                             ctx=ctx)
+    obj_attr = ast.Attribute(value=obj, attr=attr, ctx=ctx)
     obj_attr.value.inferred_value = obj_type
     return obj_attr
 
@@ -115,9 +118,11 @@ def parse_class(module: ModuleType, cls: Type) -> tuple[ast.ClassDef, Graph]:
     g = graph(cls_ast)
     return (cls_ast, g)
 
+
 def get_module_classes(module_ast: ast.Module) -> list[ast.ClassDef]:
     return [(node) for node in module_ast.body
-               if isinstance(node, ast.ClassDef)]
+            if isinstance(node, ast.ClassDef)]
+
 
 def is_lens(node: ast.FunctionDef) -> bool:
     return any(

@@ -66,16 +66,16 @@ def field_lens_lookup(g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef,
     Returns a list of lenses to rewrite field from version v to version t
     """
     lenses = lenses_to(g=g, cls_ast=cls_ast, v=v)
+    print(field, v, t, lenses)
     if field not in lenses:
         return None
     if t in lenses[field]:
         return [{field: lenses[field][t]}]
     else:
-        for w in lenses[field]:
-            lens = lenses[field][w]
+        for w, lens in lenses[field].items():
             result = [{field: lens}]
             _, fields_w = fields_lookup(g, cls_ast, w)
-            visitor = FieldReferenceCollector(get_self_obj(lens), fields_w)
+            visitor = FieldReferenceCollector(None, fields_w)
             visitor.visit(lens)
             for ref in visitor.references:
                 path = field_lens_lookup(g.delete(v), w, t, cls_ast, ref)
