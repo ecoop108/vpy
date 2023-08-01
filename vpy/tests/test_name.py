@@ -10,50 +10,34 @@ from vpy.lib.utils import get_at
 START = VersionId('start')
 FULL = VersionId('full')
 
-@version(name='start')
-@version(name='full', replaces=['start'])
+@version(name=START)
+@version(name=FULL, replaces=[START])
 class Name:
 
-    @at('start')
+    @at(START)
     def __init__(self, first: str, last: str):
         self.first: str = first
         self.last: str = last
 
-    @at('full')
+    @at(FULL)
     def __init__(self, full: str):
         self.full_name: str = full
 
-    @get('full', 'start', 'first')
+    @get(FULL, START, 'first')
     def lens_first(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[0]
         return self.full_name
 
-    @get('full', 'start', 'last')
+    @get(FULL, START, 'last')
     def lens_last(self) -> str:
         if ' ' in self.full_name:
             return self.full_name.split()[1]
         return ''
 
-    @get('start', 'full', 'full_name')
+    @get(START, 'full', 'full_name')
     def lens_full(self):
         return f"{self.first} {self.last}"
-
-    # @at('start')
-    # def reverse(self):
-    #     return self.last + ", " + self.first
-
-    # @at('full')
-    # def get(self):
-    #     return self.full_name
-
-    # @at('full')
-    # def set_name(self, name: str):
-    #     self.full_name = name
-
-    # @at('start')
-    # def set_last(self, some_name):
-    #     self.last = some_name
 
 
 @pytest.fixture

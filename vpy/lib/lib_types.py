@@ -1,5 +1,6 @@
 from ast import Constant, FunctionDef, List, keyword
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import DefaultDict, NewType
 import networkx as nx
 
@@ -9,6 +10,13 @@ Lenses = NewType('Lenses', DefaultDict[VersionId, DefaultDict[str, DefaultDict[V
                                                                 FunctionDef]]])
 
 FieldName = NewType('FieldName', str)
+ClassName = NewType('ClassName', str)
+
+@dataclass
+class Environment:
+    fields: dict[ClassName, dict[VersionId, set[FieldName]]]
+    get_lenses: Lenses
+    put_lenses: Lenses
 
 
 class Version():

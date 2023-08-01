@@ -66,7 +66,6 @@ def field_lens_lookup(g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef,
     Returns a list of lenses to rewrite field from version v to version t
     """
     lenses = lenses_to(g=g, cls_ast=cls_ast, v=v)
-    print(field, v, t, lenses)
     if field not in lenses:
         return None
     if t in lenses[field]:

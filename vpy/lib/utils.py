@@ -1,7 +1,19 @@
-import ast
+from ast import (
+    Attribute,
+    Call,
+    ClassDef,
+    Del,
+    FunctionDef,
+    Load,
+    Module,
+    Name,
+    NodeVisitor,
+    Store,
+    expr,
+)
 import inspect
 from types import ModuleType
-from typing import Type, TypeVar
+from typing import Type
 
 from pyanalyze.ast_annotator import annotate_code
 from pyanalyze.value import AnySource, AnyValue, TypedValue, Value
@@ -9,12 +21,8 @@ from vpy.lib.lib_types import FieldName, Graph, Version, VersionId
 import uuid
 
 
-class FieldReferenceCollector(ast.NodeVisitor):
-
-    def __init__(self,
-                 self_obj: str,
-                 fields: set[FieldName],
-                 cls: Type | None = None):
+class FieldReferenceCollector(NodeVisitor):
+    def __init__(self, self_obj: str, fields: set[FieldName], cls: Type | None = None):
         self.fields = fields
         self.references: set[str] = set()
 
@@ -27,7 +35,14 @@ class FieldReferenceCollector(ast.NodeVisitor):
         self.visit(node.value)
 
 
-def get_self_obj(node: ast.FunctionDef) -> str:
+# TODO: What kind of fields? Only self?
+def fields_in_function(node: FunctionDef, fields: set[FieldName]) -> set[str]:
+    visitor = FieldReferenceCollector(get_self_obj(node), fields)
+    visitor.visit(node)
+    return visitor.references
+
+
+def get_self_obj(node: FunctionDef) -> str:
     return node.args.args[0].arg
 
 
@@ -36,14 +51,12 @@ def fresh_var() -> str:
 
 
 # TODO: fields should be dict[ClassName, set[FieldName]]
-def is_field(node: ast.Attribute, fields: set[FieldName]) -> bool:
+def is_field(node: Attribute, fields: set[FieldName]) -> bool:
     return is_obj_attribute(node) and node.attr in fields
 
 
 # TODO: Check this function: nested attributes
-def is_obj_field(node: ast.Attribute, fields: dict[str,
-                                                   set[FieldName]]) -> bool:
-
+def is_obj_field(node: Attribute, fields: dict[str, set[FieldName]]) -> bool:
     if is_obj_attribute(node):
         node_t = node.value.inferred_value.get_type()
         if node_t is not None:
@@ -51,39 +64,44 @@ def is_obj_field(node: ast.Attribute, fields: dict[str,
     return False
 
 
-#TODO: Maybe add attr_type as param
 def get_obj_attribute(
-    obj: ast.expr,
+    obj: expr,
     attr: str,
-    ctx: ast.Load | ast.Store | ast.Del = ast.Load(),
-    obj_type: Value = AnyValue(AnySource.default)
-) -> ast.Attribute:
-    obj_attr = ast.Attribute(value=obj, attr=attr, ctx=ctx)
+    ctx: Load | Store | Del = Load(),
+    obj_type: Value = AnyValue(AnySource.default),
+    attr_type: Value = AnyValue(AnySource.default),
+) -> Attribute:
+    obj_attr = Attribute(value=obj, attr=attr, ctx=ctx)
     obj_attr.value.inferred_value = obj_type
+    obj_attr.inferred_value = attr_type
     return obj_attr
 
 
-def has_get_lens(cls_node: ast.ClassDef,
-                 get_lens_node: ast.FunctionDef) -> bool:
+def has_get_lens(cls_node: ClassDef, get_lens_node: FunctionDef) -> bool:
     for e in cls_node.body:
-        if isinstance(e, ast.FunctionDef) and e.name == get_lens_node.name:
+        if isinstance(e, FunctionDef) and e.name == get_lens_node.name:
             return any(
-                isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
-                    d.func.id == 'get') for d in e.decorator_list)
+                isinstance(d, Call)
+                and isinstance(d.func, Name)
+                and (d.func.id == "get")
+                for d in e.decorator_list
+            )
     return False
 
 
-def has_put_lens(cls_node: ast.ClassDef,
-                 get_lens_node: ast.FunctionDef) -> bool:
+def has_put_lens(cls_node: ClassDef, get_lens_node: FunctionDef) -> bool:
     for e in cls_node.body:
-        if isinstance(e, ast.FunctionDef) and e.name == get_lens_node.name:
+        if isinstance(e, FunctionDef) and e.name == get_lens_node.name:
             return any(
-                isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
-                    d.func.id == 'put') for d in e.decorator_list)
+                isinstance(d, Call)
+                and isinstance(d.func, Name)
+                and (d.func.id == "put")
+                for d in e.decorator_list
+            )
     return False
 
 
-def is_obj_attribute(node: ast.Attribute) -> bool:
+def is_obj_attribute(node: Attribute) -> bool:
     if isinstance(node.value.inferred_value, TypedValue):
         node_t = node.value.inferred_value.get_type()
         if node_t is not None:
@@ -91,66 +109,78 @@ def is_obj_attribute(node: ast.Attribute) -> bool:
     return False
 
 
-def graph(cls_ast: ast.ClassDef) -> Graph:
+def graph(cls_ast: ClassDef) -> Graph:
     return Graph(
         graph={
             v.name: v
             for v in [
-                Version(d.keywords) for d in cls_ast.decorator_list
-                if isinstance(d, ast.Call) and isinstance(d.func, ast.Name)
-                and d.func.id == 'version'
+                Version(d.keywords)
+                for d in cls_ast.decorator_list
+                if isinstance(d, Call)
+                and isinstance(d.func, Name)
+                and d.func.id == "version"
             ]
-        })
+        }
+    )
 
 
-def parse_module(module: ModuleType) -> ast.Module:
+def parse_module(module: ModuleType) -> Module:
     src = inspect.getsource(module)
     tree = annotate_code(src)
     return tree
 
 
-def parse_class(module: ModuleType, cls: Type) -> tuple[ast.ClassDef, Graph]:
+def parse_class(module: ModuleType, cls: Type) -> tuple[ClassDef, Graph]:
     tree = parse_module(module)
     cls_ast = [
-        node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == cls.__name__
+        node
+        for node in tree.body
+        if isinstance(node, ClassDef) and node.name == cls.__name__
     ][0]
     g = graph(cls_ast)
     return (cls_ast, g)
 
 
-def get_module_classes(module_ast: ast.Module) -> list[ast.ClassDef]:
-    return [(node) for node in module_ast.body
-            if isinstance(node, ast.ClassDef)]
+def get_module_classes(module_ast: Module) -> list[ClassDef]:
+    return [(node) for node in module_ast.body if isinstance(node, ClassDef)]
 
 
-def is_lens(node: ast.FunctionDef) -> bool:
+def is_lens(node: FunctionDef) -> bool:
     return any(
-        isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and (
-            d.func.id in ['get', 'put']) for d in node.decorator_list)
+        isinstance(d, Call)
+        and isinstance(d.func, Name)
+        and (d.func.id in ["get", "put"])
+        for d in node.decorator_list
+    )
 
 
-def set_at(node: ast.FunctionDef, v: VersionId):
+def set_at(node: FunctionDef, v: VersionId):
     for d in node.decorator_list:
-        if isinstance(d, ast.Call) and isinstance(
-                d.func, ast.Name) and d.func.id in ['get', 'at']:
+        if (
+            isinstance(d, Call)
+            and isinstance(d.func, Name)
+            and d.func.id in ["get", "at"]
+        ):
             d.args[0].value = v
 
 
-def get_at(node: ast.FunctionDef) -> VersionId:
-    return [
-        d for d in node.decorator_list if isinstance(d, ast.Call)
-        and isinstance(d.func, ast.Name) and d.func.id in ['get', 'at', 'put']
-    ][0].args[0].value  # type: ignore
+def get_at(node: FunctionDef) -> VersionId:
+    return VersionId(
+        [
+            d
+            for d in node.decorator_list
+            if isinstance(d, Call)
+            and isinstance(d.func, Name)
+            and d.func.id in ["get", "at", "put"]
+        ][0]
+        .args[0]
+        .value
+    )
 
 
-def get_decorator(node: ast.FunctionDef,
-                  dec_name: str | list[str]) -> ast.Call | None:
+def get_decorator(node: FunctionDef, dec_name: str | list[str]) -> Call | None:
     for dec in node.decorator_list:
-        if isinstance(dec, ast.Call):
-            if isinstance(dec.func, ast.Name) and dec.func.id == dec_name:
+        if isinstance(dec, Call):
+            if isinstance(dec.func, Name) and dec.func.id == dec_name:
                 return dec
     return None
-
-
-T = TypeVar('T', bound=ast.AST)

@@ -254,3 +254,4 @@ flycheck_*.el
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
 
 .pylintrc
+.vscode/settings.json
