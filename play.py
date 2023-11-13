@@ -1,58 +1,57 @@
 from vpy.decorators import at, get, run, version
 
 
-@version(name='start')
-@version(name='full', replaces=['start'])
+@version(name="start")
+@version(name="full", replaces=["start"])
 class Name:
-
-    @at('start')
+    @at("start")
     def __init__(self, first: str, last: str):
         self.first: str = first
         self.last: str = last
 
-    @at('full')
+    @at("full")
     def __init__(self, full: str):
         self.full_name: str = full
 
-    @get('full', 'start', 'first')
+    @get("full", "start", "first")
     def lens_first(self) -> str:
-        if ' ' in self.full_name:
-            first, _ = self.full_name.split(' ')
+        if " " in self.full_name:
+            first, _ = self.full_name.split(" ")
             return first
         return self.full_name
 
-    @get('full', 'start', 'last')
+    @get("full", "start", "last")
     def lens_last(self) -> str:
-        if ' ' in self.full_name:
-            _, last = self.full_name.split(' ')
+        if " " in self.full_name:
+            _, last = self.full_name.split(" ")
             return last
-        return ''
+        return ""
 
-    @get('start', 'full', 'full_name')
+    @get("start", "full", "full_name")
     def lens_full(self):
         return f"{self.first} {self.last}"
 
-    @at('start')
+    @at("start")
     def reverse(self):
         return self.last + ", " + self.first
 
-    @at('full')
+    @at("full")
     def get(self):
         return self.full_name
 
-    @at('full')
+    @at("full")
     def set_name(self, val: str):
         self.full_name = val
 
-    @at('start')
+    @at("start")
     def set_last(self, some_name):
-        self.last, self.first, y = x = ("1","2",3)
+        self.last, self.first, y = x = ("1", "2", 3)
         self.last = some_name
 
 
-@run('full')
+@run("full")
 def main():
-    obj = Name('Rolling Stones')
+    obj = Name("Rolling Stones")
     print(obj.get())
     print(obj.reverse())
     obj.set_last("Stoned")
@@ -60,7 +59,7 @@ def main():
     name_switch_context()
 
 
-@run('start')
+@run("start")
 def name_switch_context():
     obj = Name("Bob", "Dylan")
     print(obj.get())  # Bob Dylan

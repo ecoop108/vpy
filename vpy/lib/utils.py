@@ -21,13 +21,56 @@ from vpy.lib.lib_types import FieldName, Graph, Version, VersionId
 import uuid
 
 
+class ClassFieldCollector(NodeVisitor):
+    """
+    Collects fields defined in a class at version v.
+    """
+
+    def __init__(self, cls_ast: ClassDef, cls_methods: list[str], v: VersionId):
+        self.__cls_methods = cls_methods
+        self.__cls_ast = cls_ast
+        self.__v = v
+        self.fields: set[FieldName] = set()
+
+    def visit_ClassDef(self, node: ClassDef):
+        # Ignore inner classes?
+        pass
+
+    def visit_FunctionDef(self, node: FunctionDef):
+        # Only look in methods defined at version v.
+        if get_at(node) != self.__v:
+            return None
+        self.generic_visit(node)
+
+    def visit_Assign(self, node):
+        for target in node.targets:
+            if isinstance(target, Attribute) and is_obj_attribute(
+                target, obj_type=self.__cls_ast.name
+            ):
+                if target.attr not in self.__cls_methods:
+                    self.fields.add(FieldName(target.attr))
+
+    def visit_AnnAssign(self, node):
+        if isinstance(node.target, Attribute) and is_obj_attribute(
+            node.target, obj_type=self.__cls_ast.name
+        ):
+            if node.target.attr not in self.__cls_methods:
+                self.fields.add(FieldName(node.target.attr))
+
+    def visit_AugAssign(self, node):
+        if isinstance(node.target, Attribute) and is_obj_attribute(
+            node.target, obj_type=self.__cls_ast.name
+        ):
+            if node.target.attr not in self.__cls_methods:
+                self.fields.add(FieldName(node.target.attr))
+
+
 class FieldReferenceCollector(NodeVisitor):
-    def __init__(self, self_obj: str, fields: set[FieldName], cls: Type | None = None):
+    def __init__(self, fields: set[FieldName], cls: Type | None = None):
         self.fields = fields
         self.references: set[str] = set()
 
     # visit function/method call
-
     def visit_Attribute(self, node):
         if is_field(node, self.fields):
             # if cls is not None:
@@ -37,7 +80,7 @@ class FieldReferenceCollector(NodeVisitor):
 
 # TODO: What kind of fields? Only self?
 def fields_in_function(node: FunctionDef, fields: set[FieldName]) -> set[str]:
-    visitor = FieldReferenceCollector(get_self_obj(node), fields)
+    visitor = FieldReferenceCollector(fields)
     visitor.visit(node)
     return visitor.references
 
@@ -53,15 +96,6 @@ def fresh_var() -> str:
 # TODO: fields should be dict[ClassName, set[FieldName]]
 def is_field(node: Attribute, fields: set[FieldName]) -> bool:
     return is_obj_attribute(node) and node.attr in fields
-
-
-# TODO: Check this function: nested attributes
-def is_obj_field(node: Attribute, fields: dict[str, set[FieldName]]) -> bool:
-    if is_obj_attribute(node):
-        node_t = node.value.inferred_value.get_type()
-        if node_t is not None:
-            return node.attr in fields[node_t.__name__]
-    return False
 
 
 def get_obj_attribute(
@@ -101,11 +135,11 @@ def has_put_lens(cls_node: ClassDef, get_lens_node: FunctionDef) -> bool:
     return False
 
 
-def is_obj_attribute(node: Attribute) -> bool:
+def is_obj_attribute(node: Attribute, obj_type: str | None = None) -> bool:
     if isinstance(node.value.inferred_value, TypedValue):
         node_t = node.value.inferred_value.get_type()
         if node_t is not None:
-            return True
+            return True if obj_type is None else obj_type == node_t.__name__
     return False
 
 
@@ -141,10 +175,6 @@ def parse_class(module: ModuleType, cls: Type) -> tuple[ClassDef, Graph]:
     return (cls_ast, g)
 
 
-def get_module_classes(module_ast: Module) -> list[ClassDef]:
-    return [(node) for node in module_ast.body if isinstance(node, ClassDef)]
-
-
 def is_lens(node: FunctionDef) -> bool:
     return any(
         isinstance(d, Call)
@@ -154,17 +184,10 @@ def is_lens(node: FunctionDef) -> bool:
     )
 
 
-def set_at(node: FunctionDef, v: VersionId):
-    for d in node.decorator_list:
-        if (
-            isinstance(d, Call)
-            and isinstance(d.func, Name)
-            and d.func.id in ["get", "at"]
-        ):
-            d.args[0].value = v
-
-
 def get_at(node: FunctionDef) -> VersionId:
+    """
+    Returns the version where a method is defined.
+    """
     return VersionId(
         [
             d

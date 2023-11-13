@@ -9,6 +9,15 @@
             "type": "python",
             "request": "launch",
             "module": "vpy",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/vpy"
+            },
+            "args": [
+                "-i",
+                "examples/api.py",
+                "-t",
+                "v1"
+            ],
             "justMyCode": true
         }
     ]

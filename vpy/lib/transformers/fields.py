@@ -1,13 +1,14 @@
-from ast import Call, ClassDef
 import ast
 import copy
+from ast import Call, ClassDef
+
 from vpy.lib.lib_types import Environment, Graph, VersionId
-from vpy.lib.utils import get_obj_attribute, has_get_lens, is_obj_field
+from vpy.lib.utils import get_obj_attribute, has_get_lens, is_obj_attribute
 
 
 class FieldTransformer(ast.NodeTransformer):
     """
-    Rewrite field access expressions of the form expr.field where expr is an object and field is a field of that object.
+    Rewrite field access expressions from version v_from to version v_target.
     """
 
     def __init__(
@@ -26,10 +27,7 @@ class FieldTransformer(ast.NodeTransformer):
 
     def visit_Attribute(self, node):
         # TODO: Review this
-        if not (
-            is_obj_field(node, {self.cls_ast.name: self.env.fields[self.v_from]})
-            and isinstance(node.ctx, ast.Load)
-        ):
+        if not (is_obj_attribute(node) and isinstance(node.ctx, ast.Load)):
             node = self.generic_visit(node)
             return node
         lens_node = self.env.get_lenses[self.v_from][node.attr][self.v_target]
@@ -39,15 +37,14 @@ class FieldTransformer(ast.NodeTransformer):
         self_attr.inferred_value = node.inferred_value
         self_call = Call(func=self_attr, args=[], keywords=[])
         if not has_get_lens(self.cls_ast, lens_node):
-            from vpy.lib.transformers.lens import MethodTransformer
+            from vpy.lib.transformers.cls import MethodTransformer
 
             lens_node_copy = copy.deepcopy(lens_node)
             visitor = MethodTransformer(
-                self.g,
-                self.cls_ast,
-                self.env.fields,
-                self.env.get_lenses,
-                self.v_target,
+                g=self.g,
+                cls_ast=self.cls_ast,
+                env=self.env,
+                target=self.v_target,
             )
             lens_node_copy = visitor.visit(lens_node)
             self.cls_ast.body.append(lens_node_copy)

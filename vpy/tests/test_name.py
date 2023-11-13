@@ -1,19 +1,17 @@
-import inspect
 from pyanalyze.ast_annotator import annotate_code
 from vpy.decorators import at, get, version
 from vpy.lib.lib_types import VersionId
 import pytest
 from vpy.lib.lookup import fields_lookup
 import ast
-from vpy.lib.utils import get_at
 
-START = VersionId('start')
-FULL = VersionId('full')
+START = VersionId("start")
+FULL = VersionId("full")
+
 
 @version(name=START)
 @version(name=FULL, replaces=[START])
 class Name:
-
     @at(START)
     def __init__(self, first: str, last: str):
         self.first: str = first
@@ -23,19 +21,19 @@ class Name:
     def __init__(self, full: str):
         self.full_name: str = full
 
-    @get(FULL, START, 'first')
+    @get(FULL, START, "first")
     def lens_first(self) -> str:
-        if ' ' in self.full_name:
+        if " " in self.full_name:
             return self.full_name.split()[0]
         return self.full_name
 
-    @get(FULL, START, 'last')
+    @get(FULL, START, "last")
     def lens_last(self) -> str:
-        if ' ' in self.full_name:
+        if " " in self.full_name:
             return self.full_name.split()[1]
-        return ''
+        return ""
 
-    @get(START, 'full', 'full_name')
+    @get(START, "full", "full_name")
     def lens_full(self):
         return f"{self.first} {self.last}"
 
@@ -43,29 +41,30 @@ class Name:
 @pytest.fixture
 def model():
     import sys
+
     module = sys.modules[__name__]
     from vpy.lib.utils import parse_class
+
     return parse_class(module, Name)
+
 
 def test_fields(model):
     cls_ast, g = model
-    base_start, fields_start = fields_lookup(g, cls_ast, START)
-    assert base_start == START
-    assert fields_start == {'first', 'last'}
-    base_full, fields_full = fields_lookup(g, cls_ast, FULL)
-    assert base_full == FULL
-    assert fields_full == {'full_name'}
-    m = ast.parse('''
+    fields_start = fields_lookup(g, cls_ast, START)
+    assert fields_start == {"first", "last"}
+    fields_full = fields_lookup(g, cls_ast, FULL)
+    assert fields_full == {"full_name"}
+    m = ast.parse(
+        """
 @at('full')
 def m(self):
-    self.x = 123''').body[0]
+    self.x = 123"""
+    ).body[0]
     cls_ast.body.append(m)
     cls_src = ast.unparse(cls_ast)
     cls_ast = annotate_code(cls_src)
-    _, fields_full = fields_lookup(g, cls_ast, FULL)
-    assert fields_full == {'full_name', 'x'}
-
-
+    fields_full = fields_lookup(g, cls_ast, FULL)
+    assert fields_full == {"full_name", "x"}
 
 
 # def test_tr_select_methods(model):
@@ -114,7 +113,6 @@ def m(self):
 #                          v=VersionId('second'))
 #     assert mdef is not None
 #     assert get_at(mdef) == 'second'
-
 
 
 # def test_base(model):

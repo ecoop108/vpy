@@ -6,10 +6,12 @@ from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
 from vpy.lib.transformers.fields import FieldTransformer
 from vpy.lib.utils import get_at, graph, is_lens
 
+
 class ClassTransformer(NodeTransformer):
-    '''
+    """
     Slice of a single class for a given version v.
-    '''
+    """
+
     def __init__(self, v: VersionId, env: Environment):
         self.v = v
         self.env = env
@@ -17,19 +19,21 @@ class ClassTransformer(NodeTransformer):
     def visit_ClassDef(self, node: ClassDef) -> ClassDef:
         g = graph(node)
         node = SelectMethodsTransformer(g=g, v=self.v).visit(node)
-        node = MethodTransformer(
-            g=g, cls_ast=node, env=self.env, target=self.v
-        ).visit(node)
+        node = MethodTransformer(g=g, cls_ast=node, env=self.env, target=self.v).visit(
+            node
+        )
         node = RemoveDecoratorsTransformer().visit(node)
         node.name += "_" + self.v
         if node.body == []:
             node.body.append(Pass())
         return node
-    
+
+
 class MethodTransformer(NodeTransformer):
-    '''
+    """
     Rewrite method body for a given version v.
-    '''
+    """
+
     def __init__(
         self, g: Graph, cls_ast: ClassDef, env: Environment, target: VersionId
     ):
@@ -52,23 +56,25 @@ class MethodTransformer(NodeTransformer):
         fields_rw.generic_visit(node)
         return node
 
+
 class SelectMethodsTransformer(NodeTransformer):
-    '''
+    """
     Selects the appropriate class methods for a given version v.
-    '''
+    """
+
     def __init__(self, g: Graph, v: VersionId):
         self.g = g
         self.v = v
 
     def visit_ClassDef(self, node: ClassDef) -> ClassDef:
-        self.cls_node = node
+        self.cls_ast = node
         self.generic_visit(node)
         return node
 
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
         if is_lens(node):
             return None
-        mdef = lookup.method_lookup(self.g, self.cls_node, node.name, self.v)
-        if mdef is None or get_at(mdef) != get_at(node):
+        methods = lookup.methods_lookup(self.g, self.cls_ast, self.v)
+        if node not in methods:
             return None
         return node

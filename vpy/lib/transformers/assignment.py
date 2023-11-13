@@ -1,4 +1,16 @@
-from ast import Assign, Attribute, BinOp, Call, ClassDef, Expr, Name, Subscript, keyword
+from ast import (
+    Assign,
+    Attribute,
+    BinOp,
+    Call,
+    ClassDef,
+    Expr,
+    List,
+    Name,
+    Subscript,
+    Tuple,
+    keyword,
+)
 import copy
 from vpy.lib.lib_types import Environment, FieldName, Graph, VersionId
 from vpy.lib.transformers.lens import PutLens
@@ -9,7 +21,7 @@ from vpy.lib.utils import (
     get_at,
     get_obj_attribute,
     is_field,
-    is_obj_field,
+    is_obj_attribute,
 )
 import ast
 
@@ -71,7 +83,10 @@ class AssignTransformer(ast.NodeTransformer):
                 # Add fields referenced in lens as arguments
                 # TODO: This function call should only lookup fields from this class? Look only for self?
                 # TODO: Use type of target.attr as key for class name
-                references = fields_in_function(lens_node, self.env.fields[self.v_from])
+                obj_type = lhs.value.inferred_value.get_type().__name__
+                references = fields_in_function(
+                    lens_node, self.env.fields[obj_type][self.v_from]
+                )
                 for ref in references:
                     if ref != lhs.attr:
                         attr = get_obj_attribute(
@@ -86,8 +101,8 @@ class AssignTransformer(ast.NodeTransformer):
 
                 # add put lens definition if missing
                 if (self.v_from, self.v_target) not in self.env.put_lenses:
-                    # TODO: Use type of target.attr as key for class name
-                    put_lens = PutLens(self.env.fields[self.v_from]).visit(
+                    obj_type = lhs.value.inferred_value.get_type().__name__
+                    put_lens = PutLens(self.env.fields[obj_type][self.v_from]).visit(
                         copy.deepcopy(lens_node)
                     )
                     self.env.put_lenses[(self.v_from, self.v_target)] = put_lens
@@ -138,12 +153,32 @@ class AssignTransformer(ast.NodeTransformer):
 
         # Collect all field references in left-hand side of assignment.
         target_references = set()
-        for target in node.targets:
-            if isinstance(target, Attribute):
+
+        def __collect_ref(node: Attribute) -> set[str]:
+            n = node
+            if isinstance(node, Subscript):
+                n = n.value
+            if isinstance(n, Attribute):
                 # TODO: Fix this. What fields are we looking for? Only from this class?
-                visitor = FieldReferenceCollector(None, self.env.fields[self.v_from])
-                visitor.visit(target)
-                target_references = target_references.union(visitor.references)
+                obj_type = n.value.inferred_value.get_type().__name__
+                visitor = FieldReferenceCollector(
+                    self.env.fields[obj_type][self.v_from]
+                )
+                visitor.visit(n)
+                return visitor.references
+            return set()
+
+        for target in node.targets:
+            if isinstance(target, Subscript):
+                target_references = target_references.union(__collect_ref(target.value))
+
+            if isinstance(target, Tuple) or isinstance(target, List):
+                for el_target in target.elts:
+                    target_references = target_references.union(
+                        __collect_ref(el_target)
+                    )
+            if isinstance(target, Attribute):
+                target_references = target_references.union(__collect_ref(target))
 
         # If any exist, we need to rewrite the assignment. We create a fresh
         # var to store the right-hand side of the assignment since a single
@@ -156,36 +191,55 @@ class AssignTransformer(ast.NodeTransformer):
             node.value = local_var
 
         for target in node.targets:
-            if isinstance(target, Attribute) and is_obj_field(
-                target, {self.cls_ast.name: self.env.fields[self.v_from]}
-            ):
+            if isinstance(target, Attribute) and is_obj_attribute(target):
                 exprs += self.rw_assign(target, node.value)
             # Local variable introduction. We do not rewrite this expressions,
             # just extract it out of multiple assignment.
+            elif (
+                isinstance(target, Subscript)
+                and isinstance(target.value, Attribute)
+                and is_obj_attribute(target.value)
+            ):
+                local_var = Name(id=fresh_var(), ctx=ast.Store())
+                local_assign = Assign(targets=[local_var], value=target.value)
+                exprs.append(local_assign)
+                node_copy = copy.deepcopy(target)
+                node_copy.value = local_var
+                local_assign = Assign(targets=[node_copy], value=node.value)
+                exprs.append(local_assign)
+                for e in self.rw_assign(target.value, local_var):
+                    exprs.append(e)
             elif isinstance(target, Name):
                 node_copy = copy.deepcopy(node)
                 node_copy.targets = [target]
                 exprs.append(node_copy)
-            elif isinstance(target, ast.Tuple):
-                fields = [
-                    el
-                    for el in target.elts
-                    if isinstance(el, Attribute)
-                    and is_field(el, self.env.fields[self.v_from])
-                ]
+            elif isinstance(target, Tuple) or isinstance(target, List):
+                fields = []
+                for el in target.elts:
+                    if (
+                        isinstance(el, Attribute)
+                        and is_obj_attribute(el)
+                        and is_field(
+                            el,
+                            self.env.fields[
+                                el.value.inferred_value.get_type().__name__
+                            ][self.v_from],
+                        )
+                    ):
+                        fields.append(el)
                 if len(fields) == 0:
                     exprs.append(node)
                 else:
-                    local_tuple_var = Name(id=fresh_var(), ctx=ast.Store())
-                    local_tuple_assign = Assign(
-                        targets=[local_tuple_var], value=node.value
-                    )
-                    # TODO: check if this makes sense
-                    # local_tuple_var.inferred_value = node.value.inferred_value
-                    exprs.append(local_tuple_assign)
+                    # local_tuple_var = Name(id=fresh_var(), ctx=ast.Store())
+                    # local_tuple_assign = Assign(
+                    #     targets=[local_tuple_var], value=node.value
+                    # )
+                    # # TODO: check if this makes sense
+                    # # local_tuple_var.inferred_value = node.value.inferred_value
+                    # exprs.append(local_tuple_assign)
                     for index, el in enumerate(target.elts):
                         val = Subscript(
-                            value=local_tuple_var, slice=ast.Constant(value=index)
+                            value=node.value, slice=ast.Constant(value=index)
                         )
                         if el in fields:
                             el = self.rw_assign(el, val)
