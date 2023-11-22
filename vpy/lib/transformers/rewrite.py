@@ -180,11 +180,21 @@ class ExtractLocalVar(ast.NodeTransformer):
     def visit_If(self, node):
         cond_replacements = fields_replacements(node.test, self)
         expr_before = []
+        assign_visitor = AssignAfterCall(
+            self.g, self.cls_ast, self.env, self.aliases, self.v_from, cond_replacements
+        )
+        assign_visitor.visit(node.test)
         for attr, var in cond_replacements.items():
             var_assign = Assign(targets=[var], value=attr)
             expr_before.append(var_assign)
             visitor = RewriteName(var.id)
             node.test = visitor.visit(node.test)
+        if assign_visitor.assignments:
+            var = Name(fresh_var(), ctx=Store())
+            expr_before.append(Assign(targets=[var], value=node.test))
+            node.test = var
+        for assign in assign_visitor.assignments:
+            expr_before.append(assign)
         node = replace_in_body(node, "body", self)
         node = replace_in_body(node, "orelse", self)
         return expr_before + [node]
@@ -207,12 +217,13 @@ def replace_in_body(node, key: str, visitor: ExtractLocalVar):
             assign_visitor.visit(expr)
             for assign in assign_visitor.assignments:
                 getattr(node, key).insert(idx + 1, assign)
+                idx += 1
             for attr, var in replacements.items():
                 var_assign = Assign(targets=[var], value=attr)
                 getattr(node, key).insert(idx, var_assign)
                 rw_visitor = RewriteName(var.id)
                 getattr(node, key)[idx + 1] = rw_visitor.generic_visit(expr)
-                idx += 2 + len(assign_visitor.assignments)
+            idx += 1
         else:
             expr_copy = copy.deepcopy(expr)
             nodes = visitor.visit(expr_copy)

@@ -34,15 +34,13 @@ class Library:
     def change_dog(self, idx, dog):
         other = Library()
         if True:
-            # b = self.get_all()
-            # a.pop()
-            # other.dogs.pop()
             # x = 2
-            other.dogs, w = x, z = y, 3
-            # a.pop()
+            a = other.dogs
+            a.pop()
             # a = 2
-            # print(a)
-            # b.pop()
+            print(a)
+            if other.dogs.pop():
+                return None
         else:
             b = other.dogs.pop()
 
