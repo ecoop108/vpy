@@ -3,6 +3,8 @@ from vpy.decorators import at, get, version
 
 @version(name="v1")
 @version(name="v2", replaces=["v1"])
+@version(name="v4", replaces=["v1"])
+@version(name="v5", upgrades=[], replaces=["v1"])
 class Library:
     @at("v1")
     def __init__(self):
@@ -24,14 +26,29 @@ class Library:
     def has_breed(self, breed: str):
         return breed in self.dogs
 
+    @at("v1")
+    def get_all(self):
+        return self.dogs
+
+    @at("v1")
+    def change_dog(self, idx, dog):
+        other = Library()
+        if True:
+            # b = self.get_all()
+            # a.pop()
+            # other.dogs.pop()
+            # x = 2
+            other.dogs, w = x, z = y, 3
+            # a.pop()
+            # a = 2
+            # print(a)
+            # b.pop()
+        else:
+            b = other.dogs.pop()
+
     @at("v2")
     def add_dog(self, key, dog):
         if key in self.dogs_dict:
-            # how to rewrite this expr?
             self.dogs_dict[key].append(dog)
         else:
-            # xxx = self.dogs_dict
-            # xxx[key] = [dog]
-            # self.dogs_dict = xxx
-            # self.lens_dogs__(xxx)
-            self.dogs_dict[key] = [dog]
+            side_effect_function(x=self.dogs_dict)

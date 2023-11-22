@@ -4,48 +4,48 @@ from dataclasses import dataclass
 from typing import DefaultDict, NewType
 import networkx as nx
 
-VersionId = NewType('VersionId', str)
+VersionId = NewType("VersionId", str)
 
-Lenses = NewType('Lenses', DefaultDict[VersionId, DefaultDict[str, DefaultDict[VersionId,
-                                                                FunctionDef]]])
+Lenses = NewType(
+    "Lenses",
+    DefaultDict[VersionId, DefaultDict[str, dict[VersionId, FunctionDef]]],
+)
 
-FieldName = NewType('FieldName', str)
-ClassName = NewType('ClassName', str)
+FieldName = NewType("FieldName", str)
+ClassName = NewType("ClassName", str)
+
 
 @dataclass
 class Environment:
     fields: dict[ClassName, dict[VersionId, set[FieldName]]]
     get_lenses: Lenses
     put_lenses: Lenses
+    bases: dict[VersionId, VersionId]
 
 
-class Version():
-
+class Version:
     def __init__(self, kws: list[keyword]):
         replaces = set()
         upgrades = set()
         for k in kws:
-            if k.arg == 'name' and isinstance(k.value, Constant):
+            if k.arg == "name" and isinstance(k.value, Constant):
                 self.name = VersionId(k.value.value)
-            if k.arg == 'upgrades' and isinstance(k.value, List):
+            if k.arg == "upgrades" and isinstance(k.value, List):
                 upgrades = {
-                    VersionId(v.value)
-                    for v in k.value.elts if isinstance(v, Constant)
+                    VersionId(v.value) for v in k.value.elts if isinstance(v, Constant)
                 }
-            if k.arg == 'replaces' and isinstance(k.value, List):
+            if k.arg == "replaces" and isinstance(k.value, List):
                 replaces = {
-                    VersionId(v.value)
-                    for v in k.value.elts if isinstance(v, Constant)
+                    VersionId(v.value) for v in k.value.elts if isinstance(v, Constant)
                 }
         self.upgrades = tuple(upgrades)
         self.replaces = tuple(replaces)
 
     def __repr__(self):
-        return f'Version {self.name}'
+        return f"Version {self.name}"
 
 
 class Graph(nx.DiGraph):
-
     def __init__(self, *, graph: dict[VersionId, Version] = {}):
         super().__init__()
         for version in graph.values():
@@ -53,10 +53,10 @@ class Graph(nx.DiGraph):
         for version in graph.values():
             for upgrade in version.upgrades:
                 if upgrade in graph:
-                    self.add_edge(version, graph[upgrade], label='upgrades')
+                    self.add_edge(version, graph[upgrade], label="upgrades")
             for replace in version.replaces:
                 if replace in graph:
-                    self.add_edge(version, graph[replace], label='replaces')
+                    self.add_edge(version, graph[replace], label="replaces")
 
     def find_version(self, v: VersionId) -> Version | None:
         for version in self.nodes:
@@ -72,7 +72,7 @@ class Graph(nx.DiGraph):
             return set(version.upgrades + version.replaces)
         return set()
 
-    def delete(self, v: VersionId) -> 'Graph':
+    def delete(self, v: VersionId) -> "Graph":
         other = deepcopy(self)
         version = other.find_version(v)
         if version is None:
@@ -88,3 +88,24 @@ class Graph(nx.DiGraph):
 
     def replacements(self, v: VersionId) -> list[Version]:
         return [w for w in self.nodes if v in w.replaces]
+
+    def upgrades(self, v: VersionId) -> list[Version]:
+        return [w for w in self.nodes if v in w.upgrades]
+
+    def tree(self):
+        tree = []
+
+        def make_tree_node(g: Graph, root: Version):
+            node = dict()
+            commits = g.replacements(root.name)
+            branches = g.upgrades(root.name)
+            node[root.name] = {
+                "commits": [make_tree_node(g, r) for r in commits],
+                "branches": [make_tree_node(g, r) for r in branches],
+            }
+            return node
+
+        roots = [node for node, out_degree in self.out_degree if out_degree == 0]
+        for node in roots:
+            tree.append(make_tree_node(self, node))
+        return tree

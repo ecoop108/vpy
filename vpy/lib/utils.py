@@ -1,8 +1,10 @@
 from ast import (
+    AST,
     Attribute,
     Call,
     ClassDef,
     Del,
+    Expression,
     FunctionDef,
     Load,
     Module,
@@ -207,3 +209,14 @@ def get_decorator(node: FunctionDef, dec_name: str | list[str]) -> Call | None:
             if isinstance(dec.func, Name) and dec.func.id == dec_name:
                 return dec
     return None
+
+
+def insert_at(node: AST, lineno: int, el: AST) -> AST:
+    for idx, inner in enumerate(list(node.body)):
+        if inner.lineno <= lineno <= inner.end_lineno:
+            if hasattr(inner, "body"):
+                node.body[idx] = insert_at(inner, lineno, el)
+                return node
+            else:
+                node.body.insert(idx, el)
+                return node

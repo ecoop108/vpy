@@ -14,6 +14,7 @@ from ast import (
 import copy
 from vpy.lib.lib_types import Environment, FieldName, Graph, VersionId
 from vpy.lib.transformers.lens import PutLens
+from vpy.lib.transformers.rewrite import RewriteName
 from vpy.lib.utils import (
     FieldReferenceCollector,
     fields_in_function,
@@ -57,14 +58,16 @@ class AssignTransformer(ast.NodeTransformer):
 
     def rw_assign(self, lhs: Attribute, rhs: ast.expr | None) -> list[ast.Expr]:
         """
-        Rewrite an assignment to an object field (from which class?) in another version.
+        Rewrite an assignment to an object field in another version.
         """
         if rhs is None:
             assert False
         # TODO: Iterate over lenses of class type(target.attr)
         exprs = []
-        for field in self.env.get_lenses[self.v_target]:
-            lens_node = self.env.get_lenses[self.v_target][field][self.v_from]
+        for field in self.env.get_lenses[self.env.bases[self.v_target]]:
+            lens_node = self.env.get_lenses[self.env.bases[self.v_target]][field][
+                self.env.bases[self.v_from]
+            ]
             lens_ver = get_at(lens_node)
             # Case for transitive lenses
             if lens_ver != self.v_from:
@@ -81,8 +84,6 @@ class AssignTransformer(ast.NodeTransformer):
                 # Add right-hand side of assignment as argument
                 keywords = [keyword(arg=lhs.attr, value=rhs)]
                 # Add fields referenced in lens as arguments
-                # TODO: This function call should only lookup fields from this class? Look only for self?
-                # TODO: Use type of target.attr as key for class name
                 obj_type = lhs.value.inferred_value.get_type().__name__
                 references = fields_in_function(
                     lens_node, self.env.fields[obj_type][self.v_from]
@@ -99,13 +100,18 @@ class AssignTransformer(ast.NodeTransformer):
 
                 self_call = Call(func=self_attr, args=[], keywords=keywords)
 
-                # add put lens definition if missing
-                if (self.v_from, self.v_target) not in self.env.put_lenses:
+                # Add put lens definition if missing
+                if (
+                    self.env.bases[self.v_from],
+                    self.env.bases[self.v_target],
+                ) not in self.env.put_lenses:
                     obj_type = lhs.value.inferred_value.get_type().__name__
                     put_lens = PutLens(self.env.fields[obj_type][self.v_from]).visit(
                         copy.deepcopy(lens_node)
                     )
-                    self.env.put_lenses[(self.v_from, self.v_target)] = put_lens
+                    self.env.put_lenses[
+                        (self.env.bases[self.v_from], self.env.bases[self.v_target])
+                    ] = put_lens
                     self.cls_ast.body.append(put_lens)
 
                 # Rewrite assignment using put lens
@@ -117,7 +123,7 @@ class AssignTransformer(ast.NodeTransformer):
                 )
                 lens_assign = Assign(targets=[lens_target], value=self_call)
                 ast.fix_missing_locations(lens_assign)
-                exprs.append(Expr(lens_assign))
+                exprs.append(lens_assign)
         return exprs
 
     def visit_AugAssign(self, node):
@@ -182,14 +188,14 @@ class AssignTransformer(ast.NodeTransformer):
 
         # If any exist, we need to rewrite the assignment. We create a fresh
         # var to store the right-hand side of the assignment since a single
-        # assignment may be rewritten to a set of assignment (i.e. all fields
-        # affected)
-        if len(target_references) > 0:
+        # assignment may be rewritten to a set of assignments
+        if len(target_references) > 0 and (
+            len(node.targets) > 1 or any(isinstance(t, Tuple) for t in node.targets)
+        ):
             local_var = Name(id=fresh_var(), ctx=ast.Store())
             local_assign = Assign(targets=[local_var], value=node.value)
             exprs.append(local_assign)
             node.value = local_var
-
         for target in node.targets:
             if isinstance(target, Attribute) and is_obj_attribute(target):
                 exprs += self.rw_assign(target, node.value)
@@ -228,15 +234,8 @@ class AssignTransformer(ast.NodeTransformer):
                     ):
                         fields.append(el)
                 if len(fields) == 0:
-                    exprs.append(node)
+                    exprs.append(Assign(targets=[target], value=node.value))
                 else:
-                    # local_tuple_var = Name(id=fresh_var(), ctx=ast.Store())
-                    # local_tuple_assign = Assign(
-                    #     targets=[local_tuple_var], value=node.value
-                    # )
-                    # # TODO: check if this makes sense
-                    # # local_tuple_var.inferred_value = node.value.inferred_value
-                    # exprs.append(local_tuple_assign)
                     for index, el in enumerate(target.elts):
                         val = Subscript(
                             value=node.value, slice=ast.Constant(value=index)
@@ -248,4 +247,5 @@ class AssignTransformer(ast.NodeTransformer):
                             exprs.append(Assign(targets=[el], value=val))
             elif isinstance(target, ast.List):
                 assert False
+
         return exprs

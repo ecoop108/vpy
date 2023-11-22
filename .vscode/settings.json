@@ -3,5 +3,6 @@
     "python.linting.enabled": true,
     "python.formatting.provider": "yapf",
     "python.linting.flake8Enabled": false,
-    "cSpell.enabled": false
+    "cSpell.enabled": false,
+    "python.analysis.autoImportCompletions": true
 }

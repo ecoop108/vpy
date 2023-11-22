@@ -1,7 +1,6 @@
 from _ast import FunctionDef
 import ast
-from ast import Attribute, ClassDef, FunctionDef, NodeVisitor
-from typing import Any
+from ast import ClassDef, FunctionDef, NodeVisitor
 from vpy.lib.lib_types import FieldName, Graph, Lenses, VersionId
 from vpy.lib.utils import (
     ClassFieldCollector,
@@ -9,13 +8,28 @@ from vpy.lib.utils import (
     get_decorator,
     is_lens,
     get_at,
-    is_obj_attribute,
 )
 from collections import defaultdict
 
 
+def base(g: Graph, cls_ast: ClassDef, v: VersionId) -> VersionId | None:
+    fields_v = fields_at(g=g, cls_ast=cls_ast, v=v)
+    if len(fields_v) > 0:
+        return v
+    else:
+        base_p = None
+        for p in g.parents(v):
+            back = base(g, cls_ast, p)
+            if base_p:
+                if back != base_p:
+                    return None
+            else:
+                base_p = back
+        return base_p
+
+
 def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
-    lenses: Lenses = defaultdict(lambda: defaultdict(lambda: defaultdict(FunctionDef)))
+    lenses: Lenses = defaultdict(lambda: defaultdict(dict))
     for k in g.all():
         for t in g.all():
             if k != t:
@@ -71,6 +85,7 @@ def lenses_at(
     return lenses
 
 
+# TODO: Add identity lens here
 def field_lens_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef, field: str
 ) -> list[dict[str, FunctionDef]] | None:
