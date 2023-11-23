@@ -1,4 +1,4 @@
-from vpy.decorators import at, get, version
+from vpy.decorators import at, get, version, run
 
 
 @version(name="v1")
@@ -9,6 +9,7 @@ class Library:
     @at("v1")
     def __init__(self):
         self.dogs = ["Golden Retriever", "Pug", "Pitbull"]
+        self.x = 2
 
     @at("v2")
     def __init__(self):
@@ -20,27 +21,39 @@ class Library:
 
     @get("v1", "v2", "dogs_dict")
     def lens_dogs_dict(self):
-        return {"A": self.dogs}
+        return {"A" + self.x: self.dogs}
 
     @at("v1")
     def has_breed(self, breed: str):
         return breed in self.dogs
 
     @at("v1")
-    def get_all(self):
-        return self.dogs
+    def get_all(self) -> list[str]:
+        a = self.dogs
+        return a
+
+    @at("v2")
+    def get_all(self) -> list[str]:
+        return self.dogs_dict
 
     @at("v1")
-    def change_dog(self, idx, dog):
+    def change_dog(self, idx: "Library", dog, p):
         other = Library()
         if True:
-            # x = 2
-            a = other.dogs
-            a.pop()
-            # a = 2
-            print(a)
-            if other.dogs.pop():
-                return None
+            b = other.get_all()
+            b.pop()
+            # a = b
+            # x = a
+            # print(x)
+            # p.x = [5]
+            idx.dogs.pop()
+            ### xxx = self.get_all()
+            ### xxx.pop()
+            ### put(xxx)
+            # a = 2, other.dogs
+            # a[1].pop()
+            # if other.dogs.pop():
+            #     return None
         else:
             b = other.dogs.pop()
 
@@ -50,3 +63,10 @@ class Library:
             self.dogs_dict[key].append(dog)
         else:
             side_effect_function(x=self.dogs_dict)
+
+
+@run("v1")
+def __main__():
+    l = Library()
+    print(l.add_dog("", "Pug"))
+    print(l.x)

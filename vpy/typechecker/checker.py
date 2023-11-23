@@ -5,6 +5,7 @@ from networkx import find_cycle
 from networkx.exception import NetworkXNoCycle
 from vpy.lib.lib_types import Graph
 from vpy.lib.lookup import (
+    cls_lenses,
     fields_at,
     fields_lookup,
     field_lens_lookup,
@@ -56,9 +57,11 @@ def check_methods(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
 
 
 def check_missing_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
-    # lenses = cls_lenses(g, cls_ast)
+    lenses = cls_lenses(g, cls_ast)
     for v in g.all():
-        for m in methods_lookup(g, cls_ast, v.name):
+        methods = methods_lookup(g, cls_ast, v.name)
+        lenses_methods = [l for w in lenses[v.name].values() for l in w.values()]
+        for m in methods.union(set(lenses_methods)):
             mver = get_at(m)
             fields_v = fields_at(g=g, cls_ast=cls_ast, v=v.name)
             if mver != v.name and len(fields_v) > 0:

@@ -12,6 +12,7 @@ from ast import (
     NodeVisitor,
     Store,
     expr,
+    walk,
 )
 import inspect
 from types import ModuleType
@@ -95,7 +96,6 @@ def fresh_var() -> str:
     return f"_{str(uuid.uuid4().hex)}"
 
 
-# TODO: fields should be dict[ClassName, set[FieldName]]
 def is_field(node: Attribute, fields: set[FieldName]) -> bool:
     return is_obj_attribute(node) and node.attr in fields
 
@@ -209,14 +209,3 @@ def get_decorator(node: FunctionDef, dec_name: str | list[str]) -> Call | None:
             if isinstance(dec.func, Name) and dec.func.id == dec_name:
                 return dec
     return None
-
-
-def insert_at(node: AST, lineno: int, el: AST) -> AST:
-    for idx, inner in enumerate(list(node.body)):
-        if inner.lineno <= lineno <= inner.end_lineno:
-            if hasattr(inner, "body"):
-                node.body[idx] = insert_at(inner, lineno, el)
-                return node
-            else:
-                node.body.insert(idx, el)
-                return node

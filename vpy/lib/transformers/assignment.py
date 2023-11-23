@@ -165,13 +165,13 @@ class AssignTransformer(ast.NodeTransformer):
             if isinstance(node, Subscript):
                 n = n.value
             if isinstance(n, Attribute):
-                # TODO: Fix this. What fields are we looking for? Only from this class?
-                obj_type = n.value.inferred_value.get_type().__name__
-                visitor = FieldReferenceCollector(
-                    self.env.fields[obj_type][self.v_from]
-                )
-                visitor.visit(n)
-                return visitor.references
+                obj_type = n.value.inferred_value.get_type()
+                if obj_type:
+                    visitor = FieldReferenceCollector(
+                        self.env.fields[obj_type.__name__][self.v_from]
+                    )
+                    visitor.visit(n)
+                    return visitor.references
             return set()
 
         for target in node.targets:
@@ -222,15 +222,11 @@ class AssignTransformer(ast.NodeTransformer):
             elif isinstance(target, Tuple) or isinstance(target, List):
                 fields = []
                 for el in target.elts:
-                    if (
-                        isinstance(el, Attribute)
-                        and is_obj_attribute(el)
-                        and is_field(
-                            el,
-                            self.env.fields[
-                                el.value.inferred_value.get_type().__name__
-                            ][self.v_from],
-                        )
+                    if isinstance(el, Attribute) and is_field(
+                        el,
+                        self.env.fields[el.value.inferred_value.get_type().__name__][
+                            self.v_from
+                        ],
                     ):
                         fields.append(el)
                 if len(fields) == 0:
@@ -247,5 +243,9 @@ class AssignTransformer(ast.NodeTransformer):
                             exprs.append(Assign(targets=[el], value=val))
             elif isinstance(target, ast.List):
                 assert False
+            else:
+                node_copy = copy.deepcopy(node)
+                node_copy.targets = [target]
+                exprs.append(node_copy)
 
         return exprs

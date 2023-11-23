@@ -1,6 +1,6 @@
 import ast
 import copy
-from ast import Assign, Call, ClassDef, Expr, Name
+from ast import Call, ClassDef
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.utils import (
@@ -13,7 +13,7 @@ from vpy.lib.utils import (
 
 class FieldTransformer(ast.NodeTransformer):
     """
-    Rewrite field access expressions from version v_from to version v_target.
+    Rewrite field access expressions of the form obj.field from version v_from to version v_target.
     """
 
     def __init__(
@@ -68,14 +68,5 @@ class FieldTransformer(ast.NodeTransformer):
             node.args[index] = self.visit(arg)
         for index, kw in enumerate(node.keywords):
             node.keywords[index].value = self.visit(kw.value)
-        # if isinstance(node.func.inferred_value, KnownValue) and isinstance(node.func.inferred_value.val, type):
-        #     cls = node.func.inferred_value.val
-        #     import sys
-        #     mod = sys.modules[cls.__module__]
-        #     cls_ast, g = parse_class(mod, cls)
-        #     print(fields_lookup(g, cls_ast, self.v_from))
-        #     for arg in node.args:
-        #         print(ast.dump(arg))
-        #     print(cls.__module__)
         self.visit(node.func)
         return node
