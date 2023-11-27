@@ -13,7 +13,6 @@ from ast import (
     Delete,
     Expr,
     For,
-    FunctionDef,
     Load,
     Name,
     NodeVisitor,
@@ -24,6 +23,7 @@ from ast import (
     TryStar,
     While,
     With,
+    expr,
     walk,
 )
 from typing import Any
@@ -32,7 +32,6 @@ from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.utils import (
     fresh_var,
     is_field,
-    is_obj_attribute,
 )
 
 
@@ -78,7 +77,10 @@ class ExtractLocalVar(ast.NodeTransformer):
         expr_before = []
         expr_after = []
         for idx, expr in enumerate(list(node.targets)):
-            replacements = fields_replacements(expr, self)
+            field_visitor = FieldReplacementVisitor(self)
+            field_visitor.visit(expr)
+            replacements = field_visitor.fields
+
             assign_visitor = AssignAfterCall(
                 g=self.g,
                 cls_ast=self.cls_ast,
@@ -94,10 +96,12 @@ class ExtractLocalVar(ast.NodeTransformer):
             for attr, var in replacements.items():
                 var_assign = Assign(targets=[var], value=attr)
                 expr_before.append(var_assign)
-                visitor = RewriteName(src=attr, target=Name(id=var.id, ctx=Load()))
+                visitor = RewriteName(src=attr, target=var)
                 node.targets[idx] = visitor.visit(expr)
 
-        replacements = fields_replacements(node.value, self)
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.value)
+        replacements = field_visitor.fields
         assign_visitor = AssignAfterCall(
             g=self.g,
             cls_ast=self.cls_ast,
@@ -107,13 +111,18 @@ class ExtractLocalVar(ast.NodeTransformer):
             aliases=self.aliases,
         )
         assign_visitor.visit(node.value)
-        for assgn in assign_visitor.assignments:
-            expr_after.append(assgn)
-
-        for attr, var in replacements.items():
-            var_assign = Assign(targets=[var], value=attr)
-            expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=Name(id=var.id, ctx=Load()))
+        for idx, assgn in enumerate(assign_visitor.assignments):
+            if all(
+                a.value != assgn.value
+                for i, a in enumerate(assign_visitor.assignments)
+                if i < idx
+            ):
+                expr_after.append(assgn)
+        for idx, (attr, var) in enumerate(replacements.items()):
+            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            visitor = RewriteName(src=attr, target=var)
             node.value = visitor.visit(node.value)
 
         return expr_before + [node] + expr_after
@@ -123,18 +132,25 @@ class ExtractLocalVar(ast.NodeTransformer):
 
     def visit_AugAssign(self, node: AugAssign) -> Any:
         expr_before = []
-        target_replacements = fields_replacements(node.target, self)
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.target)
+        target_replacements = field_visitor.fields
+
         for attr, var in target_replacements.items():
-            var_assign = Assign(targets=[var], value=attr)
-            expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=Name(id=var.id, ctx=Load()))
+            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            visitor = RewriteName(src=attr, target=var)
             node.target = visitor.visit(node.target)
 
-        val_replacements = fields_replacements(node.value, self)
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.value)
+        val_replacements = field_visitor.fields
         for attr, var in val_replacements.items():
-            var_assign = Assign(targets=[var], value=attr)
-            expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=Name(id=var.id, ctx=Load()))
+            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            visitor = RewriteName(src=attr, target=var)
             node.value = visitor.visit(node.value)
 
         return node
@@ -163,43 +179,55 @@ class ExtractLocalVar(ast.NodeTransformer):
     def visit_Raise(self, node: Raise) -> Any:
         assert False
 
-    def visit_FunctionDef(self, node: FunctionDef) -> Any:
-        assert False
-
     def visit_AsyncFunctionDef(self, node: AsyncFunctionDef) -> Any:
         assert False
 
     def visit_Return(self, node: Return) -> Any:
         expr_before = []
-        replacements = fields_replacements(node.value, self)
-        for attr, var in replacements.items():
-            var_assign = Assign(targets=[var], value=attr)
-            expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=Name(id=var.id, ctx=Load()))
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.value)
+        replacements = field_visitor.fields
+        for idx, (attr, var) in enumerate(replacements.items()):
+            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            visitor = RewriteName(src=attr, target=var)
             node.value = visitor.visit(node.value)
         return expr_before + [node]
 
     def visit_If(self, node):
-        cond_replacements = fields_replacements(node.test, self)
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.test)
+        cond_replacements = field_visitor.fields
         expr_before = []
         assign_visitor = AssignAfterCall(
             self.g, self.cls_ast, self.env, self.aliases, self.v_from, cond_replacements
         )
         assign_visitor.visit(node.test)
-        for attr, var in cond_replacements.items():
-            var_assign = Assign(targets=[var], value=attr)
-            expr_before.append(var_assign)
-            visitor = RewriteName(attr, Name(id=var.id, ctx=Load()))
+        for idx, (attr, var) in enumerate(cond_replacements.items()):
+            if all(
+                v != var for i, v in enumerate(cond_replacements.values()) if i < idx
+            ):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            visitor = RewriteName(attr, var)
             node.test = visitor.visit(node.test)
         if assign_visitor.assignments:
             var = Name(fresh_var(), ctx=Store())
             expr_before.append(Assign(targets=[var], value=node.test))
             node.test = var
-        for assign in assign_visitor.assignments:
-            expr_before.append(assign)
+        for idx, assign in enumerate(assign_visitor.assignments):
+            if all(
+                v != assign for i, v in enumerate(assign_visitor.assignments) if i < idx
+            ):
+                expr_before.append(assign)
         node = replace_in_body(node, "body", self)
         node = replace_in_body(node, "orelse", self)
         return expr_before + [node]
+
+    def visit_FunctionDef(self, node):
+        node = replace_in_body(node, "body", self)
+        return node
 
 
 def replace_in_body(node, key: str, visitor: ExtractLocalVar):
@@ -207,7 +235,9 @@ def replace_in_body(node, key: str, visitor: ExtractLocalVar):
     stmts = list(getattr(node, key))
     for expr in stmts:
         if isinstance(expr, Expr):
-            replacements = fields_replacements(expr, visitor)
+            field_visitor = FieldReplacementVisitor(visitor)
+            field_visitor.visit(expr)
+            replacements = field_visitor.fields
             assign_visitor = AssignAfterCall(
                 g=visitor.g,
                 cls_ast=visitor.cls_ast,
@@ -217,19 +247,20 @@ def replace_in_body(node, key: str, visitor: ExtractLocalVar):
                 replacements=replacements,
             )
             assign_visitor.visit(expr)
-            for attr, var in replacements.items():
-                var_assign = Assign(targets=[var], value=attr)
-                getattr(node, key).insert(idx, var_assign)
-                rw_visitor = RewriteName(attr, Name(id=var.id, ctx=Load()))
+            for i, (attr, var) in enumerate(replacements.items()):
+                if all(v != var for j, v in enumerate(replacements.values()) if j < i):
+                    var_assign = Assign(targets=[var], value=attr)
+                    getattr(node, key).insert(idx, var_assign)
+                rw_visitor = RewriteName(attr, var)
                 getattr(node, key)[idx + 1] = rw_visitor.generic_visit(expr)
             idx += len(replacements)
             for assign in assign_visitor.assignments:
                 getattr(node, key).insert(idx + 1, assign)
             idx += len(assign_visitor.assignments) + 1
         else:
-            expr_copy = copy.deepcopy(expr)
-            nodes = visitor.visit(expr_copy)
-            expr = expr_copy
+            # expr_copy = copy.deepcopy(expr)
+            nodes = visitor.visit(expr)
+            # expr = expr_copy
             if isinstance(nodes, list):
                 del getattr(node, key)[idx]
                 new = getattr(node, key)[:idx] + nodes + getattr(node, key)[idx:]
@@ -239,22 +270,6 @@ def replace_in_body(node, key: str, visitor: ExtractLocalVar):
                 getattr(node, key)[idx] = nodes
                 idx += 1
     return node
-
-
-def fields_replacements(node, visitor: ExtractLocalVar):
-    fields = {}
-    for attr in walk(node):
-        if isinstance(attr, Attribute) and isinstance(attr.ctx, Load):
-            obj_type = attr.value.inferred_value.get_type()
-            if (
-                obj_type
-                and obj_type.__name__ in visitor.env.fields
-                and is_field(
-                    attr, visitor.env.fields[obj_type.__name__][visitor.v_from]
-                )
-            ):
-                fields[attr] = Name(id=fresh_var(), ctx=Load())
-    return fields
 
 
 class AssignAfterCall(NodeVisitor):
@@ -276,42 +291,54 @@ class AssignAfterCall(NodeVisitor):
         self.assignments = []
 
     def visit_Call(self, node: Call) -> Any:
+        collected_args: list[expr] = []
         for arg in node.args:
             if arg in self.aliases:
-                self.assignments.append(
-                    Assign(
-                        targets=[self.aliases[arg][1]],
-                        value=arg,
+                if self.aliases[arg][1] not in collected_args:
+                    collected_args.append(self.aliases[arg][1])
+                    if self.aliases[arg][1] in self.replacements:
+                        value = self.replacements[self.aliases[arg][1]]
+                    else:
+                        value = arg
+                    self.assignments.append(
+                        Assign(
+                            targets=[self.aliases[arg][1]],
+                            value=value,
+                        )
                     )
-                )
             else:
-                fields = fields_replacements(
-                    arg,
-                    self,
-                )
+                field_visitor = FieldReplacementVisitor(self)
+                field_visitor.visit(arg)
+                fields = field_visitor.fields
                 if fields:
                     for field in fields:
-                        self.assignments.append(
-                            Assign(targets=[field], value=self.replacements[field])
-                        )
+                        if field in self.aliases and field not in collected_args:
+                            collected_args.append(self.aliases[field][1])
+                            self.assignments.append(
+                                Assign(targets=[field], value=self.replacements[field])
+                            )
 
         for kw_arg in node.keywords:
             if kw_arg.value in self.aliases:
-                self.assignments.append(
-                    Assign(
-                        targets=[self.aliases[arg][1]],
-                        value=kw_arg.value,
-                    )
-                )
-            else:
-                fields = fields_replacements(
-                    kw_arg.value,
-                    self,
-                )
-                for field in fields:
+                if self.aliases[kw_arg.value][1] not in collected_args:
+                    collected_args.append(self.aliases[kw_arg.value][1])
                     self.assignments.append(
-                        Assign(targets=[field], value=self.replacements[field])
+                        Assign(
+                            targets=[self.aliases[kw_arg.value][1]],
+                            value=kw_arg.value,
+                        )
                     )
+            else:
+                field_visitor = FieldReplacementVisitor(self)
+                field_visitor.visit(kw_arg.value)
+                fields = field_visitor.fields
+
+                for field in fields:
+                    if field in self.aliases and field not in collected_args:
+                        collected_args.append(self.aliases[field][1])
+                        self.assignments.append(
+                            Assign(targets=[field], value=self.replacements[field])
+                        )
         if isinstance(node.func, Attribute):
             assignments = []
             for n in walk(node.func.value):
@@ -325,11 +352,37 @@ class AssignAfterCall(NodeVisitor):
             if assignments:
                 self.assignments.extend(assignments)
             else:
-                fields = fields_replacements(
-                    node.func,
-                    self,
-                )
+                field_visitor = FieldReplacementVisitor(self)
+                field_visitor.visit(node.func)
+                fields = field_visitor.fields
                 for field in fields:
                     self.assignments.append(
                         Assign(targets=[field], value=self.replacements[field])
                     )
+
+
+class FieldReplacementVisitor(NodeVisitor):
+    def __init__(self, visitor: ExtractLocalVar | AssignAfterCall):
+        self.fields = {}
+        self.visitor = visitor
+
+    def visit_Attribute(self, node: Attribute) -> Any:
+        if isinstance(node.ctx, Load):
+            obj_type = node.value.inferred_value.get_type()
+            if (
+                obj_type
+                and obj_type.__name__ in self.visitor.env.fields
+                and is_field(
+                    node,
+                    self.visitor.env.fields[obj_type.__name__][self.visitor.v_from],
+                )
+            ):
+                if node in self.visitor.aliases:
+                    if self.visitor.aliases[node][1] in self.fields:
+                        self.fields[node] = self.fields[self.visitor.aliases[node][1]]
+                    else:
+                        self.fields[node] = Name(id=fresh_var(), ctx=Load())
+                else:
+                    self.fields[node] = Name(id=fresh_var(), ctx=Load())
+            else:
+                self.generic_visit(node)

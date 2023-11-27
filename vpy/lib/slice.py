@@ -30,7 +30,7 @@ def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
                     lenses[k.name] = defaultdict(dict)
                 if lens := lookup.lens_lookup(g, k.name, t.name, cls_ast):
                     for field, lens_node in lens.items():
-                        lenses[k.name][field][t.name] = lens_node
+                        lenses[k.name][field.name][t.name] = lens_node
     env = Environment(fields=fields, get_lenses=lenses, put_lenses=[], bases=bases)
     sl = ClassTransformer(v=v, env=env).visit(cls_ast)
     s = ast.unparse(ast.fix_missing_locations(sl))

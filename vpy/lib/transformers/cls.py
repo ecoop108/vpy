@@ -12,6 +12,8 @@ from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
 from vpy.lib.transformers.fields import FieldTransformer
 from vpy.lib.transformers.rewrite import ExtractLocalVar
 from vpy.lib.utils import (
+    create_identity_lens,
+    create_init,
     get_at,
     graph,
     is_lens,
@@ -47,6 +49,20 @@ class ClassTransformer(NodeTransformer):
 
     def visit_ClassDef(self, node: ClassDef) -> ClassDef:
         g = graph(node)
+        if lookup.base(g, node, self.v) is None:
+            node.body.append(create_init(g=g, cls_ast=node, v=self.v))
+            for w in g.parents(self.v):
+                for field in lookup.fields_lookup(g, node, w):
+                    id_lens_v_w = create_identity_lens(g, node, self.v, w, field)
+                    self.env.get_lenses.put_lens(
+                        v_from=self.v, field_name=field.name, v_to=w, lens=id_lens_v_w
+                    )
+                    node.body.append(id_lens_v_w)
+                    id_lens_w_v = create_identity_lens(g, node, w, self.v, field)
+                    self.env.get_lenses.put_lens(
+                        v_from=w, field_name=field.name, v_to=self.v, lens=id_lens_w_v
+                    )
+                    node.body.append(id_lens_w_v)
         node = SelectMethodsTransformer(g=g, v=self.v).visit(node)
         node = MethodTransformer(g=g, cls_ast=node, env=self.env, target=self.v).visit(
             node
@@ -93,7 +109,7 @@ class MethodTransformer(NodeTransformer):
             v_target=self.v_target,
             aliases=alias_visitor.aliases,
         )
-        fields_var.generic_visit(node)
+        fields_var.visit(node)
         assign_rw = AssignTransformer(
             self.g, self.cls_ast, self.env, self.v_target, v_from
         )

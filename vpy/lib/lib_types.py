@@ -1,23 +1,51 @@
 from ast import Constant, FunctionDef, List, keyword
+from collections import UserDict, defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import DefaultDict, NewType
+from typing import DefaultDict, NamedTuple, NewType
 import networkx as nx
+from pyanalyze.value import Value, CanAssignContext
 
 VersionId = NewType("VersionId", str)
 
-Lenses = NewType(
-    "Lenses",
-    DefaultDict[VersionId, DefaultDict[str, dict[VersionId, FunctionDef]]],
-)
 
-FieldName = NewType("FieldName", str)
+class Lenses(UserDict):
+    def get_lens(
+        self, v_from: VersionId, v_to: VersionId, field_name: str
+    ) -> FunctionDef | None:
+        try:
+            return self.data[v_from][field_name][v_to]
+        except KeyError:
+            return None
+
+    def put_lens(
+        self, v_from: VersionId, v_to: VersionId, field_name: str, lens: FunctionDef
+    ) -> None:
+        if v_from not in self.data:
+            self.data[v_from] = {}
+        if field_name not in self.data[v_from]:
+            self.data[v_from][field_name] = {}
+        self.data[v_from][field_name][v_to] = lens
+        return None
+
+    def has_lens(self, v_from: VersionId, field_name: str, v_to: VersionId) -> bool:
+        try:
+            return v_to in self.data[v_from][field_name]
+        except KeyError:
+            return False
+
+
+class Field(NamedTuple):
+    name: str
+    type: Value
+
+
 ClassName = NewType("ClassName", str)
 
 
 @dataclass
 class Environment:
-    fields: dict[ClassName, dict[VersionId, set[FieldName]]]
+    fields: dict[ClassName, dict[VersionId, set[Field]]]
     get_lenses: Lenses
     put_lenses: Lenses
     bases: dict[VersionId, VersionId]
@@ -68,6 +96,7 @@ class Graph(nx.DiGraph):
         return list(self.nodes)
 
     def parents(self, v: VersionId) -> set[VersionId]:
+        """Returns the ids of versions that v either upgrades or replaces."""
         if version := self.find_version(v):
             return set(version.upgrades + version.replaces)
         return set()

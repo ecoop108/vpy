@@ -76,9 +76,7 @@ class AliasVisitor(ast.NodeVisitor):
                     if isinstance(node.value.func, Attribute)
                     else node.value.func.id
                 )
-                method = copy.deepcopy(
-                    lookup._method_lookup(g, cls_ast, m=mname, v=self.v_from)
-                )
+                method = lookup._method_lookup(g, cls_ast, m=mname, v=self.v_from)
                 if method is not None:
                     visitor = AliasVisitor(g, cls_ast, self.env, self.v_from)
                     rw_visitor = RewriteName(
@@ -106,6 +104,29 @@ class AliasVisitor(ast.NodeVisitor):
                                     found_refs = True
         if not found_refs:
             self.aliases[node.targets[0]] = None
+
+    def visit_Call(self, node: Call):
+        if isinstance(node.func, Attribute):
+            self.visit(node.func.value)
+        else:
+            self.generic_visit(node)
+
+    def visit_Attribute(self, node: Attribute):
+        if isinstance(node.ctx, Load):
+            existing = [
+                n
+                for n in self.aliases.keys()
+                if isinstance(n, Attribute) and ast.unparse(node) == ast.unparse(n)
+            ]
+            if existing:
+                existing_node = existing[-1]
+                if self.aliases[existing_node] is not None:
+                    self.aliases[node] = self.aliases[existing_node]
+            else:
+                self.aliases[node] = (
+                    node.value.inferred_value.get_type().__name__,
+                    node,
+                )
 
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Load):
