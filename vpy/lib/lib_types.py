@@ -48,6 +48,7 @@ class Environment:
     fields: dict[ClassName, dict[VersionId, set[Field]]]
     get_lenses: Lenses
     put_lenses: Lenses
+    method_lenses: Lenses
     bases: dict[VersionId, VersionId]
 
 

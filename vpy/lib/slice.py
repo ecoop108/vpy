@@ -16,7 +16,7 @@ def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
     status, err = check_cls(module, cls_ast)
     if not status:
         raise Exception(err)
-    lenses = lookup.cls_lenses(g, cls_ast)
+    lenses = lookup.cls_field_lenses(g, cls_ast)
     fields = {}
     bases = {}
     for k in g.all():
@@ -28,7 +28,7 @@ def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
             if k != t:
                 if k.name not in lenses:
                     lenses[k.name] = defaultdict(dict)
-                if lens := lookup.lens_lookup(g, k.name, t.name, cls_ast):
+                if lens := lookup.__lens_lookup(g, k.name, t.name, cls_ast):
                     for field, lens_node in lens.items():
                         lenses[k.name][field.name][t.name] = lens_node
     env = Environment(fields=fields, get_lenses=lenses, put_lenses=[], bases=bases)

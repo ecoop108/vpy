@@ -4,13 +4,11 @@ from ast import ClassDef, FunctionDef, NodeVisitor
 from vpy.lib.lib_types import Field, Field, Graph, Lenses, VersionId
 from vpy.lib.utils import (
     ClassFieldCollector,
-    FieldReferenceCollector,
+    fields_in_function,
     get_decorator,
     is_lens,
     get_at,
 )
-from collections import defaultdict
-from pyanalyze.value import CanAssignContext
 
 
 def base(g: Graph, cls_ast: ClassDef, v: VersionId) -> VersionId | None:
@@ -29,12 +27,12 @@ def base(g: Graph, cls_ast: ClassDef, v: VersionId) -> VersionId | None:
         return base_p
 
 
-def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
+def cls_field_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
     lenses = Lenses()
     for k in g.all():
         for t in g.all():
             if k != t:
-                if lens := lens_lookup(g, k.name, t.name, cls_ast):
+                if lens := __lens_lookup(g, k.name, t.name, cls_ast):
                     for field, lens_node in lens.items():
                         lenses.put_lens(
                             v_from=k.name,
@@ -45,7 +43,23 @@ def cls_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
     return lenses
 
 
-def lenses_to(
+def cls_method_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
+    lenses = Lenses()
+    for k in g.all():
+        for t in g.all():
+            if k != t:
+                if lens := __method_lens_lookup(g, k.name, t.name, cls_ast):
+                    for method, lens_node in lens.items():
+                        lenses.put_lens(
+                            v_from=k.name,
+                            field_name=method,
+                            v_to=t.name,
+                            lens=lens_node,
+                        )
+    return lenses
+
+
+def __lenses_to(
     g: Graph, cls_ast: ClassDef, v: VersionId
 ) -> dict[str, dict[VersionId, FunctionDef]]:
     """
@@ -70,27 +84,6 @@ def lenses_to(
     return lenses
 
 
-def lenses_at(
-    cls_ast: ClassDef, v: VersionId
-) -> dict[str, dict[VersionId, FunctionDef]]:
-    """
-    Returns the lenses explicitly defined at version v.
-    """
-    lenses = {}
-    for method in cls_ast.body:
-        if isinstance(method, FunctionDef):
-            decorator = get_decorator(method, "get")
-            if decorator:
-                at, target, field = [
-                    a.value for a in decorator.args if isinstance(a, ast.Constant)
-                ]
-                if at == v:
-                    if field not in lenses:
-                        lenses[field] = {}
-                    lenses[field][target] = method
-    return lenses
-
-
 # TODO: Add identity lens here
 def field_lens_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef, field: str
@@ -98,7 +91,7 @@ def field_lens_lookup(
     """
     Returns a list of lenses to rewrite field from version v to version t
     """
-    lenses = lenses_to(g=g, cls_ast=cls_ast, v=v)
+    lenses = __lenses_to(g=g, cls_ast=cls_ast, v=v)
     if field not in lenses:
         return None
     if t in lenses[field]:
@@ -107,10 +100,9 @@ def field_lens_lookup(
         for w, lens in lenses[field].items():
             result = [{field: lens}]
             fields_w = fields_lookup(g, cls_ast, w)
-            visitor = FieldReferenceCollector(fields_w)
-            visitor.visit(lens)
-            for ref in visitor.references:
-                path = field_lens_lookup(g.delete(v), w, t, cls_ast, ref)
+            references = fields_in_function(lens, fields_w)
+            for ref in references:
+                path = field_lens_lookup(g.delete(v), w, t, cls_ast, ref.name)
                 if path is None:
                     break
                 result += path
@@ -119,7 +111,32 @@ def field_lens_lookup(
         return None
 
 
-def lens_lookup(
+def method_lens_lookup(
+    g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef, method: str
+) -> list[dict[str, FunctionDef]] | None:
+    """
+    Returns a list of lenses to rewrite method from version v to version t
+    """
+    lenses = __lenses_to(g=g, cls_ast=cls_ast, v=t)
+    if method not in lenses:
+        return None
+    if v in lenses[method]:
+        return [{method: lenses[method][v]}]
+    else:
+        for w, lens in lenses[method].items():
+            result = [{method: lens}]
+            methods_w = methods_at(g, cls_ast, w)
+            for m in methods_w:
+                path = method_lens_lookup(g.delete(v), w, t, cls_ast, m.name)
+                if path is None:
+                    break
+                result += path
+            else:
+                return result
+        return None
+
+
+def __lens_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef
 ) -> dict[Field, FunctionDef]:
     """
@@ -132,6 +149,22 @@ def lens_lookup(
         if path is not None:
             lens = path[0][field.name]
             result[field] = lens
+    return result
+
+
+def __method_lens_lookup(
+    g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef
+) -> dict[str, FunctionDef]:
+    """
+    Returns the method lenses from v to t.
+    """
+    methods_v = methods_at(g, cls_ast, v)
+    result: dict[str, FunctionDef] = {}
+    for method in methods_v:
+        path = method_lens_lookup(g, v, t, cls_ast, method.name)
+        if path is not None:
+            lens = path[0][method.name]
+            result[method.name] = lens
     return result
 
 

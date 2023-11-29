@@ -1,5 +1,16 @@
 import ast
-from ast import Assign, Attribute, Call, ClassDef, Load, Name, Return, Tuple, walk
+from ast import (
+    Assign,
+    Attribute,
+    Call,
+    ClassDef,
+    FunctionDef,
+    Load,
+    Name,
+    Return,
+    Tuple,
+    walk,
+)
 import copy
 from typing import Any
 from pyanalyze.value import UnboundMethodValue
@@ -26,6 +37,11 @@ class AliasVisitor(ast.NodeVisitor):
         self.env = env
         self.v_from = v_from
         self.aliases = {}
+
+    def visit_FunctionDef(self, node: FunctionDef) -> Any:
+        for expr in node.body:
+            self.visit(expr)
+        return node
 
     def visit_Assign(self, node: Assign) -> Any:
         def __collect_ref(alias, n: Attribute):

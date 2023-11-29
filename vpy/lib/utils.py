@@ -12,7 +12,6 @@ from ast import (
     NodeVisitor,
     Return,
     Store,
-    expr,
 )
 import ast
 import inspect
@@ -79,18 +78,16 @@ class ClassFieldCollector(NodeVisitor):
 class FieldReferenceCollector(NodeVisitor):
     def __init__(self, fields: set[Field], cls: Type | None = None):
         self.fields = fields
-        self.references: set[str] = set()
+        self.references: set[Field] = set()
 
     # visit function/method call
     def visit_Attribute(self, node):
         if is_field(node, self.fields):
-            # if cls is not None:
-            self.references.add(node.attr)
+            self.references.add(Field(name=node.attr, type=node.inferred_value))
         self.visit(node.value)
 
 
-# TODO: What kind of fields? Only self?
-def fields_in_function(node: FunctionDef, fields: set[Field]) -> set[str]:
+def fields_in_function(node: FunctionDef, fields: set[Field]) -> set[Field]:
     visitor = FieldReferenceCollector(fields)
     visitor.visit(node)
     return visitor.references
@@ -104,12 +101,14 @@ def fresh_var() -> str:
     return f"_{str(uuid.uuid4().hex)}"
 
 
-def is_field(node: Attribute, fields: set[Field]) -> bool:
+def is_field(node: Attribute, fields: set[Field] | None) -> bool:
+    if fields is None:
+        return False
     return is_obj_attribute(node) and any(field.name == node.attr for field in fields)
 
 
 def get_obj_attribute(
-    obj: expr,
+    obj: ast.expr,
     attr: str,
     ctx: Load | Store | Del = Load(),
     obj_type: Value = AnyValue(AnySource.default),
@@ -222,20 +221,24 @@ def get_decorator(node: FunctionDef, dec_name: str | list[str]) -> Call | None:
     return None
 
 
+def field_to_arg(field: Field) -> ast.arg:
+    field_arg = ast.arg(arg=field.name)
+    if isinstance(field.type, KnownValue):
+        field_arg.annotation = Name(id=field.type.get_type().__name__, ctx=Load())
+        field_arg.annotation.inferred_value = field.type
+    if isinstance(field.type, TypedValue):
+        field_arg.annotation = Name(id=str(field.type.typ), ctx=Load())
+        field_arg.annotation.inferred_value = field.type
+    return field_arg
+
+
 def create_init(g: Graph, cls_ast: ClassDef, v: VersionId) -> FunctionDef:
     from vpy.lib.lookup import fields_lookup
 
     inherited_fields = fields_lookup(g, cls_ast, v)
     # Create function parameters
     self_param = ast.arg(arg="self", annotation=None)
-    init_params = []
-    for param in inherited_fields:
-        arg = ast.arg(arg=param.name)
-        if isinstance(param.type, KnownValue):
-            arg.annotation = Name(id=param.type.get_type().__name__)
-        if isinstance(param.type, TypedValue):
-            arg.annotation = Name(id=str(param.type.typ))
-        init_params.append(arg)
+    init_params = [field_to_arg(field) for field in inherited_fields]
 
     params = [self_param] + init_params
 
@@ -262,9 +265,9 @@ def create_init(g: Graph, cls_ast: ClassDef, v: VersionId) -> FunctionDef:
         rhs = Name(id=param.name, ctx=Load())
         annotation = None
         if isinstance(param.type, KnownValue):
-            annotation = Name(id=param.type.get_type().__name__)
+            annotation = Name(id=param.type.get_type().__name__, ctx=Load())
         if isinstance(param.type, TypedValue):
-            annotation = Name(id=param.type.get_type().__name__)
+            annotation = Name(id=param.type.get_type().__name__, ctx=Load())
         assign = ast.AnnAssign(
             target=lhs,
             annotation=annotation,
@@ -305,15 +308,17 @@ def create_identity_lens(
     # Create the function body consisting of assigning each argument to the corresponding field
     lens_return = Return(
         get_obj_attribute(
-            obj=Name(id="self"), attr=field.name, obj_type=cls_ast.inferred_value
+            obj=Name(id="self", ctx=Load()),
+            attr=field.name,
+            obj_type=cls_ast.inferred_value,
         )
     )
     # Set return type
     return_type = None
     if isinstance(field.type, KnownValue):
-        return_type = Name(id=field.type.get_type().__name__)
+        return_type = Name(id=field.type.get_type().__name__, ctx=Load())
     if isinstance(field.type, TypedValue):
-        return_type = Name(id=str(field.type.typ))
+        return_type = Name(id=str(field.type.typ), ctx=Load())
     # Create the __init__ function node
     lens = FunctionDef(
         name=f"__lens_{field.name}_{v}_{t}__",
@@ -321,7 +326,7 @@ def create_identity_lens(
         body=[lens_return],
         decorator_list=[
             ast.Call(
-                func=Name(id="get"),
+                func=Name(id="get", ctx=Load()),
                 args=[Constant(value=v), Constant(value=t), Constant(value=field.name)],
                 keywords=[],
             )

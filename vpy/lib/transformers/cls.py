@@ -4,7 +4,6 @@ from ast import (
     NodeTransformer,
     Pass,
 )
-import copy
 from vpy.lib import lookup
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.assignment import AssignTransformer
@@ -94,9 +93,7 @@ class MethodTransformer(NodeTransformer):
             or self.env.bases[self.v_target] == self.env.bases[v_from]
         ):
             return node
-        if is_lens(node):
-            return node
-        node = RemoveDecoratorsTransformer().visit(node)
+        # node = RemoveDecoratorsTransformer().visit(node)
         alias_visitor = AliasVisitor(
             g=self.g, cls_ast=self.cls_ast, env=self.env, v_from=v_from
         )
@@ -122,6 +119,14 @@ class MethodTransformer(NodeTransformer):
             v_from,
         )
         fields_rw.generic_visit(node)
+        # method_lens_rw = MethodLensTransformer(
+        #     g=self.g,
+        #     cls_ast=self.cls_ast,
+        #     env=self.env,
+        #     v_target=self.v_target,
+        #     v_from=v_from,
+        # )
+        # method_lens_rw.visit(node)
         return node
 
 

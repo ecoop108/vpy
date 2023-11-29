@@ -14,7 +14,6 @@ import copy
 from vpy.lib.lib_types import Environment, Field, Graph, VersionId
 from vpy.lib.transformers.lens import PutLens
 from vpy.lib.utils import (
-    FieldReferenceCollector,
     fields_in_function,
     fresh_var,
     get_at,
@@ -77,9 +76,9 @@ class AssignTransformer(ast.NodeTransformer):
         for field, lenses in self.env.get_lenses[self.env.bases[step_target]].items():
             if self.env.bases[self.v_from] not in lenses:
                 continue
-            lens_node = lenses[self.env.bases[self.v_from]]
 
-            #
+            # Check if field in lhs appears in lens function
+            lens_node = lenses[self.env.bases[self.v_from]]
             if (
                 len(fields_in_function(lens_node, {Field(name=lhs.attr, type=None)}))
                 > 0
@@ -99,14 +98,14 @@ class AssignTransformer(ast.NodeTransformer):
                     lens_node, self.env.fields[obj_type][self.v_from]
                 )
                 for ref in references:
-                    if ref != lhs.attr:
+                    if ref.name != lhs.attr:
                         attr = get_obj_attribute(
                             obj=lhs.value,
-                            attr=ref,
+                            attr=ref.name,
                             obj_type=lhs.value.inferred_value,
                         )
                         attr = self.visit(attr)
-                        keywords.append(keyword(arg=ref, value=attr))
+                        keywords.append(keyword(arg=ref.name, value=attr))
 
                 self_call = Call(func=self_attr, args=[], keywords=keywords)
 
@@ -185,11 +184,10 @@ class AssignTransformer(ast.NodeTransformer):
             if isinstance(n, Attribute):
                 obj_type = n.value.inferred_value.get_type()
                 if obj_type:
-                    visitor = FieldReferenceCollector(
-                        self.env.fields[obj_type.__name__][self.v_from]
-                    )
-                    visitor.visit(n)
-                    return visitor.references
+                    obj_fields = self.env.fields[obj_type.__name__][self.v_from]
+                    return {
+                        f.name for f in fields_in_function(node=n, fields=obj_fields)
+                    }
             return set()
 
         for target in node.targets:

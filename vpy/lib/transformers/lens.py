@@ -1,4 +1,4 @@
-from ast import Call, ClassDef, Name, arg
+from ast import Call, ClassDef, Name
 from vpy.lib import lookup
 
 
@@ -6,6 +6,7 @@ from vpy.lib.lib_types import Field, VersionId
 from vpy.lib.utils import (
     create_identity_lens,
     create_init,
+    field_to_arg,
     fields_in_function,
     graph,
     is_field,
@@ -34,8 +35,8 @@ class PutLens(ast.NodeTransformer):
 
     def visit_FunctionDef(self, node):
         references = fields_in_function(node, self.fields)
-        for f in references:
-            node.args.kwonlyargs.append(arg(arg=f))
+        for field in references:
+            node.args.kwonlyargs.append(field_to_arg(field))
             node.args.kw_defaults.append(None)
         for dec in node.decorator_list:
             if (
@@ -44,13 +45,19 @@ class PutLens(ast.NodeTransformer):
                 and dec.func.id == "get"
             ):
                 dec.func.id = "put"
+        # if node.returns is None:
+        #     node.returns = Name(id=lens_field.type.simplify().__name__, ctx=Load())
         self.generic_visit(node)
         return node
 
     def visit_Attribute(self, node):
         # TODO: Fix this for nested fields
         if is_field(node, self.fields) and isinstance(node.ctx, ast.Load):
-            node = Name(id=node.attr, ctx=ast.Load())
+            name_node = Name(id=node.attr, ctx=ast.Load())
+            name_node.inferred_value = [f for f in self.fields if f.name == node.attr][
+                0
+            ].type
+            node = name_node
         else:
             node.value = self.visit(node.value)
         return node

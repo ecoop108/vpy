@@ -1,5 +1,4 @@
 from ast import ClassDef, fix_missing_locations
-import copy
 from types import ModuleType
 
 from networkx import find_cycle
@@ -8,17 +7,16 @@ from vpy.lib import lookup
 from vpy.lib.lib_types import Graph
 from vpy.lib.lookup import (
     base,
-    cls_lenses,
+    cls_field_lenses,
     fields_at,
     fields_lookup,
     field_lens_lookup,
-    lens_lookup,
     methods_lookup,
 )
 from vpy.lib.utils import (
-    FieldReferenceCollector,
     create_identity_lens,
     create_init,
+    fields_in_function,
     get_at,
     graph,
     parse_module,
@@ -126,7 +124,7 @@ def check_methods(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
 
 def check_missing_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
     # cls_ast = copy.deepcopy(cls_ast)
-    lenses = cls_lenses(g, cls_ast)
+    lenses = cls_field_lenses(g, cls_ast)
     for v in g.all():
         methods = methods_lookup(g, cls_ast, v.name)
         lenses_methods = []  # l for w in lenses[v.name].values() for l in w.values()]
@@ -137,16 +135,14 @@ def check_missing_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
             fields_v = fields_at(g=g, cls_ast=cls_ast, v=v.name)
             if mver != v.name and len(fields_v) > 0:
                 fields_m = fields_lookup(g, cls_ast, mver)
-                visitor = FieldReferenceCollector(fields_m)
-                visitor.visit(m)
-                # path = lens_lookup(g, mver, v.name, cls_ast)
-                for ref in visitor.references:
-                    path = field_lens_lookup(g, mver, v.name, cls_ast, ref)
+                references = fields_in_function(node=m, fields=fields_m)
+                for ref in references:
+                    path = field_lens_lookup(g, mver, v.name, cls_ast, ref.name)
                     if path is None:
                         return (
                             False,
                             [
-                                f"No path between versions {mver} and {v.name} for field {ref} in method {m.name}"
+                                f"No path between versions {mver} and {v.name} for field {ref.name} in method {m.name}"
                             ],
                         )
     return (True, [])

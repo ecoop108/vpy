@@ -40,7 +40,6 @@ class ModuleTransformer(ast.NodeTransformer):
                 for k in g.all():
                     identity_visitor = IdentityLens(k.name)
                     cls = identity_visitor.visit(cls)
-                lenses = lookup.cls_lenses(g, cls)
                 for k in g.all():
                     bases[k.name] = lookup.base(g, cls, k.name)
                     if cls.name not in fields:
@@ -48,8 +47,9 @@ class ModuleTransformer(ast.NodeTransformer):
                     fields[cls.name][k.name] = lookup.fields_lookup(g, cls, k.name)
                 self.env = Environment(
                     fields=fields,
-                    get_lenses=lenses,
+                    get_lenses=lookup.cls_field_lenses(g, cls),
                     put_lenses=Lenses(),
+                    method_lenses=lookup.cls_method_lenses(g, cls),
                     bases=bases,
                 )
                 node.body[idx] = ClassTransformer(v=self.v, env=self.env).visit(cls)

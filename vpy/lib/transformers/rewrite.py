@@ -279,7 +279,7 @@ class AssignAfterCall(NodeVisitor):
         cls_ast: ClassDef,
         env: Environment,
         aliases: dict,
-        v_from: str,
+        v_from: VersionId,
         replacements,
     ):
         self.g = g
@@ -298,6 +298,8 @@ class AssignAfterCall(NodeVisitor):
                     collected_args.append(self.aliases[arg][1])
                     if self.aliases[arg][1] in self.replacements:
                         value = self.replacements[self.aliases[arg][1]]
+                    elif arg in self.replacements:
+                        value = self.replacements[arg]
                     else:
                         value = arg
                     self.assignments.append(
@@ -322,10 +324,16 @@ class AssignAfterCall(NodeVisitor):
             if kw_arg.value in self.aliases:
                 if self.aliases[kw_arg.value][1] not in collected_args:
                     collected_args.append(self.aliases[kw_arg.value][1])
+                    if self.aliases[kw_arg.value][1] in self.replacements:
+                        value = self.replacements[self.aliases[kw_arg.value][1]]
+                    elif kw_arg.value in self.replacements:
+                        value = self.replacements[kw_arg.value]
+                    else:
+                        value = kw_arg.value
                     self.assignments.append(
                         Assign(
                             targets=[self.aliases[kw_arg.value][1]],
-                            value=kw_arg.value,
+                            value=value,
                         )
                     )
             else:
@@ -343,10 +351,16 @@ class AssignAfterCall(NodeVisitor):
             assignments = []
             for n in walk(node.func.value):
                 if n in self.aliases:
+                    if self.aliases[n][1] in self.replacements:
+                        value = self.replacements[self.aliases[n][1]]
+                    elif n in self.replacements:
+                        value = self.replacements[n]
+                    else:
+                        value = node.func.value
                     assignments.append(
                         Assign(
                             targets=[self.aliases[n][1]],
-                            value=node.func.value,
+                            value=value,
                         )
                     )
             if assignments:

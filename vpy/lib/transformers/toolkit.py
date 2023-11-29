@@ -23,7 +23,7 @@ class AddVersionTransformer(ast.NodeTransformer):
 
     def visit_ClassDef(self, node: ClassDef) -> Any:
         dec = ast.Call()
-        dec.func = ast.Name(id="version")
+        dec.func = ast.Name(id="version", ctx=ast.Load())
         dec.keywords = [
             ast.keyword(arg="name", value=ast.Constant(value=self.version.name)),
             ast.keyword(
