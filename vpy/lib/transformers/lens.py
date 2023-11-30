@@ -30,6 +30,11 @@ class IdentityLens(ast.NodeTransformer):
 
 
 class PutLens(ast.NodeTransformer):
+    """
+    Synthesize put lens from the corresponding get lens.
+    Replace all self fields in the lens with arguments of the same name.
+    """
+
     def __init__(self, fields: set[Field]):
         self.fields = fields
 

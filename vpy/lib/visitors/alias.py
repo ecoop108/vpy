@@ -9,9 +9,9 @@ from ast import (
     Name,
     Return,
     Tuple,
+    expr,
     walk,
 )
-import copy
 from typing import Any
 from pyanalyze.value import UnboundMethodValue
 from vpy.lib import lookup
@@ -36,7 +36,7 @@ class AliasVisitor(ast.NodeVisitor):
         self.cls_ast = cls_ast
         self.env = env
         self.v_from = v_from
-        self.aliases = {}
+        self.aliases: dict[expr, tuple[str, expr]] = {}
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         for expr in node.body:
@@ -143,6 +143,7 @@ class AliasVisitor(ast.NodeVisitor):
                     node.value.inferred_value.get_type().__name__,
                     node,
                 )
+            self.generic_visit(node)
 
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Load):

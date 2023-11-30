@@ -25,6 +25,11 @@ import ast
 
 
 class AssignTransformer(ast.NodeTransformer):
+    """
+    Transformer to rewrite field store expressions of the form obj.field = val
+    from version v_from to version v_target.
+    """
+
     def __init__(
         self,
         g: Graph,
@@ -178,15 +183,14 @@ class AssignTransformer(ast.NodeTransformer):
         target_references = set()
 
         def __collect_ref(node: Attribute) -> set[str]:
-            n = node
             if isinstance(node, Subscript):
-                n = n.value
-            if isinstance(n, Attribute):
-                obj_type = n.value.inferred_value.get_type()
+                return __collect_ref(node.value)
+            if isinstance(node, Attribute):
+                obj_type = node.value.inferred_value.get_type()
                 if obj_type:
                     obj_fields = self.env.fields[obj_type.__name__][self.v_from]
                     return {
-                        f.name for f in fields_in_function(node=n, fields=obj_fields)
+                        f.name for f in fields_in_function(node=node, fields=obj_fields)
                     }
             return set()
 
@@ -209,6 +213,7 @@ class AssignTransformer(ast.NodeTransformer):
             len(node.targets) > 1 or any(isinstance(t, Tuple) for t in node.targets)
         ):
             local_var = Name(id=fresh_var(), ctx=ast.Store())
+            local_var.inferred_value = node.value.inferred_value
             local_assign = Assign(targets=[local_var], value=node.value)
             exprs.append(local_assign)
             node.value = local_var

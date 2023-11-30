@@ -80,7 +80,6 @@ class FieldReferenceCollector(NodeVisitor):
         self.fields = fields
         self.references: set[Field] = set()
 
-    # visit function/method call
     def visit_Attribute(self, node):
         if is_field(node, self.fields):
             self.references.add(Field(name=node.attr, type=node.inferred_value))

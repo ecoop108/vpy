@@ -22,7 +22,8 @@ from vpy.lib.visitors.alias import AliasVisitor
 
 class ClassStrictTransformer(NodeTransformer):
     """
-    Strict clice of a single class for a given version v.
+    Strict slice of a single class for a given version v.
+    Select methods and fields explcitily defined at version v.
     """
 
     def __init__(self, v: VersionId):
@@ -75,7 +76,7 @@ class ClassTransformer(NodeTransformer):
 
 class MethodTransformer(NodeTransformer):
     """
-    Rewrite method body for a given version v.
+    Transformer to rewrite method body for a given version v.
     """
 
     def __init__(
@@ -93,11 +94,9 @@ class MethodTransformer(NodeTransformer):
             or self.env.bases[self.v_target] == self.env.bases[v_from]
         ):
             return node
-        # node = RemoveDecoratorsTransformer().visit(node)
         alias_visitor = AliasVisitor(
             g=self.g, cls_ast=self.cls_ast, env=self.env, v_from=v_from
         )
-        alias_visitor.visit(node)
         fields_var = ExtractLocalVar(
             g=self.g,
             cls_ast=self.cls_ast,
@@ -106,10 +105,11 @@ class MethodTransformer(NodeTransformer):
             v_target=self.v_target,
             aliases=alias_visitor.aliases,
         )
-        fields_var.visit(node)
         assign_rw = AssignTransformer(
             self.g, self.cls_ast, self.env, self.v_target, v_from
         )
+        alias_visitor.visit(node)
+        fields_var.visit(node)
         assign_rw.generic_visit(node)
         fields_rw = FieldTransformer(
             self.g,
@@ -152,7 +152,7 @@ class SelectMethodsStrictTransformer(NodeTransformer):
 
 class SelectMethodsTransformer(NodeTransformer):
     """
-    Selects the appropriate class methods for a given version v.
+    Selects the class methods for version v.
     """
 
     def __init__(self, g: Graph, v: VersionId):

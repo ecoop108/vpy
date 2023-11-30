@@ -15,7 +15,7 @@ from pyanalyze.value import KnownValue
 
 class FieldTransformer(ast.NodeTransformer):
     """
-    Rewrite field load expressions of the form obj.field
+    Transformer to rewrite field load expressions of the form obj.field
     from version v_from to version v_target.
     """
 
