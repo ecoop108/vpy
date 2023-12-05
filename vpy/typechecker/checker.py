@@ -81,7 +81,7 @@ def check_cls(module: ModuleType, cls_ast: ClassDef) -> tuple[bool, list[str]]:
         check_version_graph,
         check_state,
         check_methods,
-        check_missing_lenses,
+        check_missing_field_lenses,
     ]:
         status, err = check(g, cls_ast)
         if not status:
@@ -122,7 +122,7 @@ def check_methods(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
     return (True, [])
 
 
-def check_missing_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
+def check_missing_field_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
     # cls_ast = copy.deepcopy(cls_ast)
     lenses = cls_field_lenses(g, cls_ast)
     for v in g.all():
@@ -133,11 +133,21 @@ def check_missing_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
                 assert False
             mver = get_at(m)
             fields_v = fields_at(g=g, cls_ast=cls_ast, v=v.name)
-            if mver != v.name and len(fields_v) > 0:
+            if (
+                mver != v.name
+                and len(fields_v) > 0
+                and base(g, cls_ast, mver) != base(g, cls_ast, v.name)
+            ):
                 fields_m = fields_lookup(g, cls_ast, mver)
                 references = fields_in_function(node=m, fields=fields_m)
                 for ref in references:
-                    path = field_lens_lookup(g, mver, v.name, cls_ast, ref.name)
+                    path = field_lens_lookup(
+                        g,
+                        mver,
+                        v.name,
+                        cls_ast,
+                        ref.name,
+                    )
                     if path is None:
                         return (
                             False,
@@ -146,3 +156,6 @@ def check_missing_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
                             ],
                         )
     return (True, [])
+
+
+# TODO: Check missing method lenses. If type is different? If signature is different?

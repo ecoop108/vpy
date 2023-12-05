@@ -45,9 +45,14 @@ class FieldTransformer(ast.NodeTransformer):
         if obj_type.__name__ not in self.env.fields:
             return node
         else:
-            lens_node = self.env.get_lenses[self.env.bases[self.v_from]][node.attr][
-                self.env.bases[self.v_target]
-            ]
+            lens = self.env.get_lenses.get(
+                v_from=self.env.bases[self.v_from],
+                field_name=node.attr,
+                v_to=self.env.bases[self.v_target],
+            )
+            if lens is None:
+                assert False
+            lens_node = lens.node
             self_attr = get_obj_attribute(
                 obj=node.value,
                 attr=lens_node.name,

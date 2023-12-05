@@ -34,7 +34,7 @@ def cls_field_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
             if k != t:
                 if lens := __lens_lookup(g, k.name, t.name, cls_ast):
                     for field, lens_node in lens.items():
-                        lenses.put_lens(
+                        lenses.put(
                             v_from=k.name,
                             field_name=field.name,
                             v_to=t.name,
@@ -50,7 +50,7 @@ def cls_method_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
             if k != t:
                 if lens := __method_lens_lookup(g, k.name, t.name, cls_ast):
                     for method, lens_node in lens.items():
-                        lenses.put_lens(
+                        lenses.put(
                             v_from=k.name,
                             field_name=method,
                             v_to=t.name,
@@ -74,8 +74,8 @@ def __lenses_to(
                     a.value for a in decorator.args if isinstance(a, ast.Constant)
                 ]
                 if (
-                    target == v
-                    and g.find_version(at) is not None
+                    v == target
+                    and g.find_version(v) is not None
                     and g.find_version(target) is not None
                 ):
                     if field not in lenses:

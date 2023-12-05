@@ -10,23 +10,64 @@ from ast import (
     Tuple,
     keyword,
 )
+from collections import namedtuple
 import copy
-from vpy.lib.lib_types import Environment, Field, Graph, VersionId
+from typing import Any, NamedTuple
+from weakref import ref
+from vpy.lib.lib_types import Environment, Field, FieldReference, Graph, VersionId
 from vpy.lib.transformers.lens import PutLens
 from vpy.lib.utils import (
+    annotation_from_type_value,
     fields_in_function,
     fresh_var,
     get_at,
     get_obj_attribute,
-    is_field,
     is_obj_attribute,
 )
 import ast
 
 
+class AssignLhsFieldCollector(ast.NodeVisitor):
+    """Collect object field references in targets of an assignment statement."""
+
+    def __init__(self):
+        self.__parent = None
+        self.references: set[FieldReference] = set()
+
+    def visit_Attribute(self, node: Attribute) -> Any:
+        if is_obj_attribute(node):
+            parent_node = node if self.__parent is None else self.__parent
+            self.references.add(
+                FieldReference(
+                    node=parent_node,
+                    field=Field(name=node.attr, type=node.inferred_value),
+                    ref_node=node,
+                )
+            )
+        else:
+            assert False
+
+    def visit_Subscript(self, node: Subscript) -> Any:
+        self.__parent = node
+        self.visit(node.value)
+        self.__parent = None
+
+    def visit_Tuple(self, node: Tuple) -> Any:
+        for el in node.elts:
+            self.__parent = node
+            self.visit(el)
+            self.__parent = None
+
+    def visit_List(self, node: List) -> Any:
+        for el in node.elts:
+            self.__parent = node
+            self.visit(el)
+            self.__parent = None
+
+
 class AssignTransformer(ast.NodeTransformer):
     """
-    Transformer to rewrite field store expressions of the form obj.field = val
+    Transformer to rewrite expressions that assign values to fields (or aliases) of a class
     from version v_from to version v_target.
     """
 
@@ -45,60 +86,65 @@ class AssignTransformer(ast.NodeTransformer):
         self.v_from = v_from
 
     def step_rw_assign(
-        self, target: Attribute, value: ast.expr | None, lens_ver
-    ) -> list[ast.Expr]:
+        self, target: Attribute, value: ast.expr, lens_ver
+    ) -> list[ast.AST]:
         exprs = []
         visitor = copy.copy(self)
-        # visitor.cls_ast = self.cls_ast
         visitor.v_target = lens_ver
         visitor.v_from = self.v_from
-        rw_exprs = visitor.rw_assign(target, value)
+        rw_exprs = visitor.__rw_assign(target, value)
         visitor.v_from = lens_ver
         visitor.v_target = self.v_target
         for expr in rw_exprs:
             exprs.extend(visitor.visit(expr))
         return exprs
 
-    def rw_assign(self, lhs: Attribute, rhs: ast.expr | None) -> list[ast.Expr]:
+    def __rw_assign(self, lhs: Attribute, rhs: ast.expr) -> list[ast.AST]:
         """
-        Rewrite an assignment to an object field in another version.
+        Rewrite a simple assignment statement of the form lhs = rhs (where lhs is an object field)
+        from version self.v_from to version self.v_target.
         """
-        if rhs is None:
-            assert False
-
-        exprs = []
+        exprs: list[ast.AST] = []
 
         # Get first component of path between v_from and v_target
-        step_lens_node = self.env.get_lenses.get_lens(
-            v_from=self.env.bases[self.v_from],
+        step_lens = self.env.get_lenses.get(
+            v_from=self.v_from,
             field_name=lhs.attr,
             v_to=self.v_target,
         )
-        if step_lens_node is None:
+        # TODO: Typechecker should prevent this case.
+        if step_lens is None:
             assert False
-        step_target = get_at(step_lens_node)
-        # Iterate over lenses from step_target to v_from to detect which attributes are affected by a change to the field in lhs
-        for field, lenses in self.env.get_lenses[self.env.bases[step_target]].items():
-            if self.env.bases[self.v_from] not in lenses:
+
+        step_target = get_at(step_lens.node)
+        # Iterate over lenses from step_target to v_from
+        # to detect which attributes are affected
+        # by a change to the field in lhs
+        for field, lenses in self.env.get_lenses[step_target].items():
+            if self.v_from not in lenses:
                 continue
 
             # Check if field in lhs appears in lens function
-            lens_node = lenses[self.env.bases[self.v_from]]
+            lens_node = lenses[self.env.bases[self.v_from]].node
             if (
-                len(fields_in_function(lens_node, {Field(name=lhs.attr, type=None)}))
+                len(
+                    fields_in_function(
+                        lens_node, {Field(name=lhs.attr, type=lhs.inferred_value)}
+                    )
+                )
                 > 0
             ):
-                # Change field name to lens method call
-                self_attr = get_obj_attribute(
+                # Change field name to put-lens method call
+                put_lens_attr = get_obj_attribute(
                     obj=lhs.value,
                     attr=lens_node.name,
                     obj_type=lhs.value.inferred_value,
                     attr_type=lens_node.inferred_value,
                 )
-                # Add right-hand side of assignment as argument
+                # Add right-hand side of assignment as keyword argument
                 keywords = [keyword(arg=lhs.attr, value=rhs)]
-                # Add fields referenced in lens as arguments
-                obj_type = lhs.value.inferred_value.get_type().__name__
+                # Add other fields referenced in lens as arguments
+                obj_type = annotation_from_type_value(lhs.value.inferred_value)
                 references = fields_in_function(
                     lens_node, self.env.fields[obj_type][self.v_from]
                 )
@@ -108,23 +154,23 @@ class AssignTransformer(ast.NodeTransformer):
                             obj=lhs.value,
                             attr=ref.name,
                             obj_type=lhs.value.inferred_value,
+                            attr_type=ref.type,
                         )
                         attr = self.visit(attr)
                         keywords.append(keyword(arg=ref.name, value=attr))
 
-                self_call = Call(func=self_attr, args=[], keywords=keywords)
+                self_call = Call(func=put_lens_attr, args=[], keywords=keywords)
 
-                # Add put lens definition if missing
+                # Add put lens definition to class body if missing
                 if not self.env.put_lenses.has_lens(
-                    v_from=self.env.bases[self.v_from],
-                    v_to=self.env.bases[step_target],
+                    v_from=self.v_from,
+                    v_to=step_target,
                     field_name=field,
                 ):
-                    obj_type = lhs.value.inferred_value.get_type().__name__
-                    put_lens = PutLens(self.env.fields[obj_type][self.v_from]).visit(
-                        copy.deepcopy(lens_node)
-                    )
-                    self.env.put_lenses.put_lens(
+                    put_lens = PutLens(
+                        fields=self.env.fields[obj_type][self.v_from]
+                    ).visit(copy.deepcopy(lens_node))
+                    self.env.put_lenses.put(
                         v_from=self.env.bases[self.v_from],
                         field_name=field,
                         v_to=self.env.bases[step_target],
@@ -140,133 +186,130 @@ class AssignTransformer(ast.NodeTransformer):
                     obj_type=lhs.value.inferred_value,
                 )
                 lens_assign = Assign(targets=[lens_target], value=self_call)
-                ast.fix_missing_locations(lens_assign)
                 exprs.append(lens_assign)
 
             if step_target != self.v_target:
+                # t = self.v_target
+                # frm = self.v_from
+                # self.v_target = step_target
+                # rw_exprs = self.rw_assign(lhs, rhs)
+                # self.v_from = step_target
+                # self.v_target = t
+                # exprs = []
+                # for expr in rw_exprs:
+                #     exprs.extend(self.visit(expr))
+                # self.v_from = frm
+                # self.v_target = t
+                # return exprs
+
                 exprs = self.step_rw_assign(lhs, rhs, step_target)
 
         return exprs
 
     def visit_AugAssign(self, node):
-        if node.value:
-            node.value = self.visit(node.value)
-        if isinstance(node.target, Attribute) and is_field(
-            node.target, self.env.fields[self.v_from]
-        ):
+        """
+        Implements a transformation for Augmented Assignment (+=, -=, *=, /=).
+
+        If the target of the AugAssign has a reference to an object field, this method rewrites the
+        AugAssign node by generating a regular assignment node and calling the `visit`
+        method on that new node. Otherwise, the node remains
+        unchanged.
+        """
+        ref_visitor = AssignLhsFieldCollector()
+        ref_visitor.visit(node.target)
+        if len(ref_visitor.references) == 0:
+            return node
+        else:
             left_node = copy.deepcopy(node.target)
             left_node.ctx = ast.Load()
-            unfold = BinOp(left=left_node, right=node.value, op=node.op)
-            unfold = self.visit(unfold)
-            assign = Assign(targets=[node.target], value=unfold)
-            exprs = self.rw_assign(node.target, assign.value)
-            if len(exprs) > 0:
-                return exprs
-        return node
+            assign = Assign(
+                targets=[node.target],
+                value=BinOp(left=left_node, right=node.value, op=node.op),
+            )
+            return self.visit(assign)
 
     def visit_AnnAssign(self, node):
+        """
+        Implements a custom transformation for Annotation Assignment (e.g. self.x : int = 2).
+
+        If the target of the AnnAssign has no object references, the node remains
+        unchanged. If the target has a reference to an object field, this method
+        generates a regular assignment node and calls the `visit` method on that new
+        node if and only if the assignment has a value. Otherwise, the node is discarded.
+        """
+        ref_visitor = AssignLhsFieldCollector()
+        ref_visitor.visit(node.target)
+        if len(ref_visitor.references) == 0:
+            return node
         if node.value:
-            node.value = self.visit(node.value)
-        if isinstance(node.target, Attribute) and is_field(
-            node.target, self.env.fields[self.v_from]
-        ):
-            return self.rw_assign(node.target, node.value)
-        return node
+            assign = Assign(
+                targets=[node.target],
+                value=node.value,
+            )
+            return self.visit(assign)
+        return None
 
     def visit_Assign(self, node):
         exprs = []
-
-        # Rewrite right-hand side of assignment.
-        node.value = self.visit(node.value)
-
-        # Collect all field references in left-hand side of assignment.
-        target_references = set()
-
-        def __collect_ref(node: Attribute) -> set[str]:
-            if isinstance(node, Subscript):
-                return __collect_ref(node.value)
-            if isinstance(node, Attribute):
-                obj_type = node.value.inferred_value.get_type()
-                if obj_type:
-                    obj_fields = self.env.fields[obj_type.__name__][self.v_from]
-                    return {
-                        f.name for f in fields_in_function(node=node, fields=obj_fields)
-                    }
-            return set()
-
+        ref_visitor = AssignLhsFieldCollector()
+        # We start by collecting all object field references in the left-hand side of the assignment
         for target in node.targets:
-            if isinstance(target, Subscript):
-                target_references = target_references.union(__collect_ref(target.value))
-
-            if isinstance(target, Tuple) or isinstance(target, List):
-                for el_target in target.elts:
-                    target_references = target_references.union(
-                        __collect_ref(el_target)
-                    )
-            if isinstance(target, Attribute):
-                target_references = target_references.union(__collect_ref(target))
-
-        # If any exist, we need to rewrite the assignment. We create a fresh
-        # var to store the right-hand side of the assignment since a single
-        # assignment may be rewritten to a set of assignments
-        if len(target_references) > 0 and (
-            len(node.targets) > 1 or any(isinstance(t, Tuple) for t in node.targets)
-        ):
-            local_var = Name(id=fresh_var(), ctx=ast.Store())
-            local_var.inferred_value = node.value.inferred_value
-            local_assign = Assign(targets=[local_var], value=node.value)
-            exprs.append(local_assign)
-            node.value = local_var
-        for target in node.targets:
-            if isinstance(target, Attribute) and is_obj_attribute(target):
-                exprs += self.rw_assign(target, node.value)
-            # Local variable introduction. We do not rewrite this expressions,
-            # just extract it out of multiple assignment.
-            elif (
-                isinstance(target, Subscript)
-                and isinstance(target.value, Attribute)
-                and is_obj_attribute(target.value)
-            ):
+            ref_visitor.visit(target)
+        # If the assignment affects at least one object field then we need to rewrite it.
+        if ref_visitor.references:
+            # When we rewrite an assignment, we introduce new expressions in the AST (namely, calling the appropriate lens function(s)).
+            # Since the assignment value can produce side-effects (e.g. `obj.field = y = l.pop()`,
+            # we can not copy this value and add it to the AST multiple times since this would not match the Python semantics.
+            # As such, we need to introduce a new local variable holding the assignment value whenever
+            # we have multiple targets, or a single tuple target.
+            if len(node.targets) > 1 or isinstance(node.targets[0], Tuple):
                 local_var = Name(id=fresh_var(), ctx=ast.Store())
-                local_assign = Assign(targets=[local_var], value=target.value)
+                local_var.inferred_value = node.value.inferred_value
+                local_assign = Assign(targets=[local_var], value=node.value)
                 exprs.append(local_assign)
-                node_copy = copy.deepcopy(target)
-                node_copy.value = local_var
-                local_assign = Assign(targets=[node_copy], value=node.value)
-                exprs.append(local_assign)
-                for e in self.rw_assign(target.value, local_var):
-                    exprs.append(e)
-            elif isinstance(target, Name):
-                node_copy = copy.deepcopy(node)
-                node_copy.targets = [target]
-                exprs.append(node_copy)
-            elif isinstance(target, Tuple) or isinstance(target, List):
-                fields = []
-                for el in target.elts:
-                    if isinstance(el, Attribute) and is_field(
-                        el,
-                        self.env.fields[el.value.inferred_value.get_type().__name__][
-                            self.v_from
-                        ],
-                    ):
-                        fields.append(el)
-                if len(fields) == 0:
+                node.value = local_var
+            # TODO : Review this
+            for target in node.targets:
+                # We select all references that have this target as parent.
+                references = [
+                    ref.ref_node for ref in ref_visitor.references if ref.node == target
+                ]
+                # If the target has no field references, it remains intact.
+                if len(references) == 0:
                     exprs.append(Assign(targets=[target], value=node.value))
-                else:
+                # If the target is an attribute we rewrite the assignment using lenses.
+                elif isinstance(target, Attribute):
+                    for ref in references:
+                        exprs += self.__rw_assign(lhs=ref, rhs=node.value)
+
+                # If the target is a subscript (e.g. obj.field[k] = v), then we extract the value to a local variable
+                # and use it as the target.
+                elif isinstance(target, Subscript):
+                    for ref in references:
+                        local_var = Name(id=fresh_var(), ctx=ast.Store())
+                        local_var.inferred_value = ref.inferred_value
+                        local_assign = Assign(targets=[local_var], value=ref)
+                        exprs.append(local_assign)
+                        node_copy = copy.copy(target)
+                        node_copy.value = local_var
+                        local_assign = Assign(targets=[node_copy], value=node.value)
+                        exprs.append(local_assign)
+                        exprs += self.__rw_assign(ref, local_var)
+                elif isinstance(target, Tuple) or isinstance(target, List):
                     for index, el in enumerate(target.elts):
                         val = Subscript(
                             value=node.value, slice=ast.Constant(value=index)
                         )
-                        if el in fields:
-                            el = self.rw_assign(el, val)
+                        val.inferred_value = el.inferred_value
+                        if el in references:
+                            el = self.__rw_assign(el, val)
                             exprs += el
                         else:
                             exprs.append(Assign(targets=[el], value=val))
-            elif isinstance(target, ast.List):
-                assert False
-            else:
-                node_copy = copy.deepcopy(node)
-                node_copy.targets = [target]
-                exprs.append(node_copy)
-
+                else:
+                    node_copy = copy.copy(node)
+                    node_copy.targets = [target]
+                    exprs.append(node_copy)
+        else:
+            exprs.append(node)
         return exprs

@@ -9,6 +9,7 @@ from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.assignment import AssignTransformer
 from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
 from vpy.lib.transformers.fields import FieldTransformer
+from vpy.lib.transformers.methods import MethodLensTransformer
 from vpy.lib.transformers.rewrite import ExtractLocalVar
 from vpy.lib.utils import (
     create_identity_lens,
@@ -54,15 +55,16 @@ class ClassTransformer(NodeTransformer):
             for w in g.parents(self.v):
                 for field in lookup.fields_lookup(g, node, w):
                     id_lens_v_w = create_identity_lens(g, node, self.v, w, field)
-                    self.env.get_lenses.put_lens(
+                    self.env.get_lenses.put(
                         v_from=self.v, field_name=field.name, v_to=w, lens=id_lens_v_w
                     )
                     node.body.append(id_lens_v_w)
                     id_lens_w_v = create_identity_lens(g, node, w, self.v, field)
-                    self.env.get_lenses.put_lens(
+                    self.env.get_lenses.put(
                         v_from=w, field_name=field.name, v_to=self.v, lens=id_lens_w_v
                     )
                     node.body.append(id_lens_w_v)
+
         node = SelectMethodsTransformer(g=g, v=self.v).visit(node)
         node = MethodTransformer(g=g, cls_ast=node, env=self.env, target=self.v).visit(
             node
@@ -87,46 +89,54 @@ class MethodTransformer(NodeTransformer):
         self.env = env
         self.v_target = target
 
+    def visit_ClassDef(self, node):
+        for expr in list(node.body):
+            if isinstance(expr, FunctionDef):
+                self.visit(expr)
+        return node
+
     def visit_FunctionDef(self, node):
         v_from = get_at(node)
-        if (
-            self.v_target == v_from
-            or self.env.bases[self.v_target] == self.env.bases[v_from]
-        ):
+        if self.v_target == v_from:
             return node
-        alias_visitor = AliasVisitor(
-            g=self.g, cls_ast=self.cls_ast, env=self.env, v_from=v_from
-        )
-        fields_var = ExtractLocalVar(
+        if self.env.bases[self.v_target] != self.env.bases[v_from]:
+            alias_visitor = AliasVisitor(
+                g=self.g, cls_ast=self.cls_ast, env=self.env, v_from=v_from
+            )
+            fields_var = ExtractLocalVar(
+                g=self.g,
+                cls_ast=self.cls_ast,
+                env=self.env,
+                v_from=v_from,
+                v_target=self.v_target,
+                aliases=alias_visitor.aliases,
+            )
+            assign_rw = AssignTransformer(
+                self.g,
+                self.cls_ast,
+                self.env,
+                self.v_target,
+                v_from,
+            )
+            alias_visitor.visit(node)
+            fields_var.visit(node)
+            assign_rw.generic_visit(node)
+            fields_rw = FieldTransformer(
+                self.g,
+                self.cls_ast,
+                self.env,
+                self.v_target,
+                v_from,
+            )
+            fields_rw.generic_visit(node)
+        method_lens_rw = MethodLensTransformer(
             g=self.g,
             cls_ast=self.cls_ast,
             env=self.env,
-            v_from=v_from,
             v_target=self.v_target,
-            aliases=alias_visitor.aliases,
+            v_from=v_from,
         )
-        assign_rw = AssignTransformer(
-            self.g, self.cls_ast, self.env, self.v_target, v_from
-        )
-        alias_visitor.visit(node)
-        fields_var.visit(node)
-        assign_rw.generic_visit(node)
-        fields_rw = FieldTransformer(
-            self.g,
-            self.cls_ast,
-            self.env,
-            self.v_target,
-            v_from,
-        )
-        fields_rw.generic_visit(node)
-        # method_lens_rw = MethodLensTransformer(
-        #     g=self.g,
-        #     cls_ast=self.cls_ast,
-        #     env=self.env,
-        #     v_target=self.v_target,
-        #     v_from=v_from,
-        # )
-        # method_lens_rw.visit(node)
+        method_lens_rw.visit(node)
         return node
 
 

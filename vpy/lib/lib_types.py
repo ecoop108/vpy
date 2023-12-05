@@ -1,4 +1,8 @@
-from ast import Constant, FunctionDef, List, keyword
+"""
+This module provides useful types used throughout the codebase.
+"""
+
+from ast import Attribute, Constant, FunctionDef, List, keyword, expr
 from collections import UserDict, defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
@@ -9,23 +13,30 @@ from pyanalyze.value import Value, CanAssignContext
 VersionId = NewType("VersionId", str)
 
 
-class Lenses(UserDict):
-    def get_lens(
-        self, v_from: VersionId, v_to: VersionId, field_name: str
-    ) -> FunctionDef | None:
+class Lens(NamedTuple):
+    v_from: VersionId
+    v_target: VersionId
+    field: str
+    node: FunctionDef
+
+
+class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
+    def get(self, v_from: VersionId, v_to: VersionId, field_name: str) -> Lens | None:
         try:
             return self.data[v_from][field_name][v_to]
         except KeyError:
             return None
 
-    def put_lens(
+    def put(
         self, v_from: VersionId, v_to: VersionId, field_name: str, lens: FunctionDef
     ) -> None:
         if v_from not in self.data:
             self.data[v_from] = {}
         if field_name not in self.data[v_from]:
             self.data[v_from][field_name] = {}
-        self.data[v_from][field_name][v_to] = lens
+        self.data[v_from][field_name][v_to] = Lens(
+            v_from=v_from, v_target=v_to, field=field_name, node=lens
+        )
         return None
 
     def has_lens(self, v_from: VersionId, field_name: str, v_to: VersionId) -> bool:
@@ -40,12 +51,15 @@ class Field(NamedTuple):
     type: Value
 
 
-ClassName = NewType("ClassName", str)
+class FieldReference(NamedTuple):
+    node: expr
+    field: Field
+    ref_node: Attribute
 
 
 @dataclass
 class Environment:
-    fields: dict[ClassName, dict[VersionId, set[Field]]]
+    fields: dict[str, dict[VersionId, set[Field]]]
     get_lenses: Lenses
     put_lenses: Lenses
     method_lenses: Lenses

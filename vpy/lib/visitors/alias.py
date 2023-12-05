@@ -20,6 +20,7 @@ from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName
 from vpy.lib.utils import (
     is_field,
+    is_obj_attribute,
     parse_class,
 )
 
@@ -36,7 +37,7 @@ class AliasVisitor(ast.NodeVisitor):
         self.cls_ast = cls_ast
         self.env = env
         self.v_from = v_from
-        self.aliases: dict[expr, tuple[str, expr]] = {}
+        self.aliases: dict[expr, Attribute | None] = {}
 
     def visit_FunctionDef(self, node: FunctionDef) -> Any:
         for expr in node.body:
@@ -51,17 +52,15 @@ class AliasVisitor(ast.NodeVisitor):
                     self.v_from
                 ],
             ):
-                self.aliases[alias] = (
-                    n.value.inferred_value.get_type().__name__,
-                    n,
-                )
+                self.aliases[alias] = n
                 return True
             return False
 
         found_refs = False
-
         self.visit(node.value)
-
+        for t in node.targets:
+            self.visit(t)
+        # TODO : Fix this
         if isinstance(node.value, Tuple):
             for el in node.value.elts:
                 if el in self.aliases:
@@ -113,12 +112,14 @@ class AliasVisitor(ast.NodeVisitor):
                                         e.value.inferred_value.get_type().__name__
                                     ][self.v_from],
                                 ):
-                                    self.aliases[node.targets[0]] = (
-                                        e.value.inferred_value.get_type().__name__,
-                                        e,
-                                    )
+                                    self.aliases[node.targets[0]] = e
+
                                     found_refs = True
-        if not found_refs:
+        if (
+            isinstance(node.targets[0], Attribute)
+            and not found_refs
+            and not is_obj_attribute(node.targets[0])
+        ):
             self.aliases[node.targets[0]] = None
 
     def visit_Call(self, node: Call):
@@ -139,11 +140,8 @@ class AliasVisitor(ast.NodeVisitor):
                 if self.aliases[existing_node] is not None:
                     self.aliases[node] = self.aliases[existing_node]
             else:
-                self.aliases[node] = (
-                    node.value.inferred_value.get_type().__name__,
-                    node,
-                )
-            self.generic_visit(node)
+                self.aliases[node] = node
+        self.generic_visit(node)
 
     def visit_Name(self, node: Name) -> Any:
         if isinstance(node.ctx, Load):

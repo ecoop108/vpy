@@ -8,6 +8,7 @@ from ast import (
     AsyncFunctionDef,
     Attribute,
     AugAssign,
+    BinOp,
     Call,
     ClassDef,
     Delete,
@@ -19,8 +20,10 @@ from ast import (
     Raise,
     Return,
     Store,
+    Subscript,
     Try,
     TryStar,
+    Tuple,
     While,
     With,
     expr,
@@ -62,7 +65,7 @@ class ExtractLocalVar(ast.NodeTransformer):
         g,
         cls_ast: ClassDef,
         env: Environment,
-        aliases: dict[expr, tuple[str, expr]],
+        aliases: dict[expr, Attribute],
         v_from: VersionId,
         v_target: VersionId,
     ):
@@ -76,28 +79,6 @@ class ExtractLocalVar(ast.NodeTransformer):
     def visit_Assign(self, node: Assign) -> Any:
         expr_before = []
         expr_after = []
-        # for idx, expr in enumerate(list(node.targets)):
-        #     field_visitor = FieldReplacementVisitor(self)
-        #     field_visitor.visit(expr)
-        #     replacements = field_visitor.fields
-
-        #     assign_visitor = AssignAfterCall(
-        #         g=self.g,
-        #         cls_ast=self.cls_ast,
-        #         env=self.env,
-        #         v_from=self.v_from,
-        #         replacements=replacements,
-        #         aliases=self.aliases,
-        #     )
-        #     assign_visitor.visit(expr)
-        #     for assgn in assign_visitor.assignments:
-        #         expr_after.append(assgn)
-
-        #     for attr, var in replacements.items():
-        #         var_assign = Assign(targets=[var], value=attr)
-        #         expr_before.append(var_assign)
-        #         visitor = RewriteName(src=attr, target=var)
-        #         node.targets[idx] = visitor.visit(expr)
 
         field_visitor = FieldReplacementVisitor(self)
         field_visitor.visit(node.value)
@@ -128,35 +109,73 @@ class ExtractLocalVar(ast.NodeTransformer):
         return expr_before + [node] + expr_after
 
     def visit_AnnAssign(self, node: AnnAssign) -> Any:
-        assert False
+        target_field_visitor = FieldReplacementVisitor(self)
+        target_field_visitor.visit(node.target)
+        target_replacements = target_field_visitor.fields
+
+        val_field_visitor = FieldReplacementVisitor(self)
+        if node.value:
+            val_field_visitor.visit(node.value)
+        val_replacements = val_field_visitor.fields
+
+        if target_replacements or val_replacements:
+            return self.visit(Assign(targets=[node.target], value=node.value))
+
+        return node
 
     def visit_AugAssign(self, node: AugAssign) -> Any:
-        expr_before = []
-        field_visitor = FieldReplacementVisitor(self)
-        field_visitor.visit(node.target)
-        target_replacements = field_visitor.fields
-
-        for attr, var in target_replacements.items():
-            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
-                var_assign = Assign(targets=[var], value=attr)
-                expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=var)
-            node.target = visitor.visit(node.target)
-
-        field_visitor = FieldReplacementVisitor(self)
-        field_visitor.visit(node.value)
-        val_replacements = field_visitor.fields
-        for attr, var in val_replacements.items():
-            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
-                var_assign = Assign(targets=[var], value=attr)
-                expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=var)
-            node.value = visitor.visit(node.value)
+        target_field_visitor = FieldReplacementVisitor(self)
+        target_field_visitor.visit(node.target)
+        value_field_visitor = FieldReplacementVisitor(self)
+        value_field_visitor.visit(node.value)
+        if target_field_visitor.fields or value_field_visitor.fields:
+            left_node = copy.deepcopy(node.target)
+            left_node.ctx = ast.Load()
+            assign = Assign(
+                targets=[node.target],
+                value=BinOp(left=left_node, right=node.value, op=node.op),
+            )
+            return self.visit(assign)
 
         return node
 
     def visit_For(self, node: For) -> Any:
-        assert False
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.iter)
+        iter_replacements = field_visitor.fields
+        expr_before = []
+        expr_after = []
+
+        assign_visitor = AssignAfterCall(
+            self.g, self.cls_ast, self.env, self.aliases, self.v_from, iter_replacements
+        )
+        assign_visitor.visit(node.iter)
+
+        for idx, (attr, var) in enumerate(iter_replacements.items()):
+            if all(
+                v != var for i, v in enumerate(iter_replacements.values()) if i < idx
+            ):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            rw_visitor = RewriteName(attr, var)
+            node.iter = rw_visitor.visit(node.iter)
+        if assign_visitor.assignments:
+            var = Name(fresh_var(), ctx=Store())
+            expr_before.append(Assign(targets=[var], value=node.iter))
+            node.iter = var
+        for idx, assign in enumerate(assign_visitor.assignments):
+            if all(
+                v != assign for i, v in enumerate(assign_visitor.assignments) if i < idx
+            ):
+                expr_before.append(assign)
+
+        node = replace_in_body(node, "body", self)
+        node = replace_in_body(node, "orelse", self)
+
+        for attr, var in iter_replacements.items():
+            expr_after.append(Assign(targets=[attr], value=var))
+
+        return expr_before + [node] + expr_after
 
     def visit_While(self, node: While) -> Any:
         assert False
@@ -171,7 +190,20 @@ class ExtractLocalVar(ast.NodeTransformer):
         assert False
 
     def visit_Delete(self, node: Delete) -> Any:
-        assert False
+        expr_before = []
+        for target in node.targets:
+            field_visitor = FieldReplacementVisitor(self)
+            field_visitor.visit(target)
+            replacements = field_visitor.fields
+            for idx, (attr, var) in enumerate(replacements.items()):
+                if all(
+                    v != var for i, v in enumerate(replacements.values()) if i < idx
+                ):
+                    var_assign = Assign(targets=[var], value=attr)
+                    expr_before.append(var_assign)
+                visitor = RewriteName(src=attr, target=var)
+                target = visitor.visit(target)
+        return expr_before + [node]
 
     def visit_With(self, node: With) -> Any:
         assert False
@@ -287,6 +319,53 @@ def replace_in_body(node, key: str, visitor: ExtractLocalVar, r: dict | None = N
     return node
 
 
+class AssignAfterSideEffects(NodeVisitor):
+    def __init__(
+        self,
+        g: Graph,
+        cls_ast: ClassDef,
+        env: Environment,
+        aliases: dict,
+        v_from: VersionId,
+        replacements,
+    ):
+        self.g = g
+        self.cls_ast = cls_ast
+        self.env = env
+        self.v_from = v_from
+        self.aliases = aliases
+        self.replacements = replacements
+        self.assignments = []
+
+    def visit_Attribute(self, node: Attribute):
+        if isinstance(node.ctx, Load) and node in self.aliases:
+            if self.aliases[node] in self.replacements:
+                value = self.replacements[self.aliases[node]]
+            elif node in self.replacements:
+                value = self.replacements[node]
+            else:
+                return
+            self.assignments.append(
+                Assign(
+                    targets=[self.aliases[node]],
+                    value=value,
+                )
+            )
+        else:
+            self.visit(node.value)
+
+    def visit_Tuple(self, node: Tuple):
+        for el in node.elts:
+            self.visit(el)
+
+    def visit_List(self, node: Tuple):
+        for el in node.elts:
+            self.visit(el)
+
+    def visit_Subscript(self, node: Subscript) -> Any:
+        self.visit(node.value)
+
+
 class AssignAfterCall(NodeVisitor):
     def __init__(
         self,
@@ -306,88 +385,57 @@ class AssignAfterCall(NodeVisitor):
         self.assignments = []
 
     def visit_Call(self, node: Call) -> Any:
-        collected_args: list[expr] = []
+        collected_args: list[Attribute] = []
         for arg in node.args:
             if arg in self.aliases:
-                if self.aliases[arg][1] not in collected_args:
-                    collected_args.append(self.aliases[arg][1])
-                    if self.aliases[arg][1] in self.replacements:
-                        value = self.replacements[self.aliases[arg][1]]
+                if self.aliases[arg] not in collected_args:
+                    collected_args.append(self.aliases[arg])
+                    if self.aliases[arg] in self.replacements:
+                        value = self.replacements[self.aliases[arg]]
                     elif arg in self.replacements:
                         value = self.replacements[arg]
                     else:
                         value = arg
                     self.assignments.append(
                         Assign(
-                            targets=[self.aliases[arg][1]],
+                            targets=[self.aliases[arg]],
                             value=value,
                         )
                     )
-            else:
-                field_visitor = FieldReplacementVisitor(self)
-                field_visitor.visit(arg)
-                fields = field_visitor.fields
-                if fields:
-                    for field in fields:
-                        if field in self.aliases and field not in collected_args:
-                            collected_args.append(self.aliases[field][1])
-                            self.assignments.append(
-                                Assign(targets=[field], value=self.replacements[field])
-                            )
 
         for kw_arg in node.keywords:
             if kw_arg.value in self.aliases:
-                if self.aliases[kw_arg.value][1] not in collected_args:
-                    collected_args.append(self.aliases[kw_arg.value][1])
-                    if self.aliases[kw_arg.value][1] in self.replacements:
-                        value = self.replacements[self.aliases[kw_arg.value][1]]
+                if self.aliases[kw_arg.value] not in collected_args:
+                    collected_args.append(self.aliases[kw_arg.value])
+                    if self.aliases[kw_arg.value] in self.replacements:
+                        value = self.replacements[self.aliases[kw_arg.value]]
                     elif kw_arg.value in self.replacements:
                         value = self.replacements[kw_arg.value]
                     else:
                         value = kw_arg.value
                     self.assignments.append(
                         Assign(
-                            targets=[self.aliases[kw_arg.value][1]],
+                            targets=[self.aliases[kw_arg.value]],
                             value=value,
                         )
                     )
-            else:
-                field_visitor = FieldReplacementVisitor(self)
-                field_visitor.visit(kw_arg.value)
-                fields = field_visitor.fields
-
-                for field in fields:
-                    if field in self.aliases and field not in collected_args:
-                        collected_args.append(self.aliases[field][1])
-                        self.assignments.append(
-                            Assign(targets=[field], value=self.replacements[field])
-                        )
         if isinstance(node.func, Attribute):
             assignments = []
             for n in walk(node.func.value):
                 if n in self.aliases:
-                    if self.aliases[n][1] in self.replacements:
-                        value = self.replacements[self.aliases[n][1]]
+                    if self.aliases[n] in self.replacements:
+                        value = self.replacements[self.aliases[n]]
                     elif n in self.replacements:
                         value = self.replacements[n]
                     else:
-                        value = node.func.value
+                        value = n
                     assignments.append(
                         Assign(
-                            targets=[self.aliases[n][1]],
+                            targets=[self.aliases[n]],
                             value=value,
                         )
                     )
-            if assignments:
-                self.assignments.extend(assignments)
-            else:
-                field_visitor = FieldReplacementVisitor(self)
-                field_visitor.visit(node.func)
-                fields = field_visitor.fields
-                for field in fields:
-                    self.assignments.append(
-                        Assign(targets=[field], value=self.replacements[field])
-                    )
+            self.assignments.extend(assignments[::-1])
 
 
 class FieldReplacementVisitor(NodeVisitor):
@@ -407,10 +455,10 @@ class FieldReplacementVisitor(NodeVisitor):
                 )
             ):
                 if node in self.visitor.aliases:
-                    if self.visitor.aliases[node][1] in self.fields:
-                        self.fields[node] = self.fields[self.visitor.aliases[node][1]]
+                    if self.visitor.aliases[node] in self.fields:
+                        self.fields[node] = self.fields[self.visitor.aliases[node]]
                     else:
                         self.fields[node] = Name(id=fresh_var(), ctx=Load())
                 else:
                     self.fields[node] = Name(id=fresh_var(), ctx=Load())
-            self.generic_visit(node)
+        self.generic_visit(node)

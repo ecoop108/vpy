@@ -87,6 +87,7 @@
 #             side_effect_function(x=self.dogs_dict)
 
 
+from typing import Callable
 from vpy.decorators import at, get, version
 
 
@@ -104,6 +105,12 @@ class Library:
     def __init__(self, fn: str, ln: str):
         self.dogs_dict = {"A": ["Golden Retriever", "Pug"], "B": ["Pitbull"]}
 
+    @get("v1", "v2", "__init__")
+    def lens_v1_v2_init(self, f, *args, **kwargs):
+        kwargs["fn"] = 1
+        kwargs["ln"] = 1
+        return f(fn="1", ln="2")
+
     @get("v2", "v1", "dogs")
     def lens_dogs(self):
         return [x for v in self.dogs_dict.values() for x in v]
@@ -116,25 +123,49 @@ class Library:
     def lens_dogs_dict(self):
         return {"A": self.dogs}
 
-    # @at("v1")
-    # def has_breed(self, breed: str) -> bool:
-    #     return breed in self.dogs
+    @at("v1")
+    def has_breed(self, breed: str) -> bool:
+        return breed in self.dogs
 
     # @at("v1")
     # def get_all(self) -> list[str]:
     #     return self.dogs
 
-    # @at("v5")
-    # def has_breed(self, breed_name: str) -> str:
-    #     return "y" if breed in self.dogs_dict else "n"
+    @at("v2")
+    def has_breed(self, breed_name: str) -> str:
+        self.dogs_dict[1] = x = l.pop()
+        return "y" if breed_name in self.dogs_dict else "n"
+
+    # @get("v2", "v1", "has_breed")
+    # def lens_v2_v1_has_breed(self, *args, **kwargs):
+    #     if "breed_name" in kwargs:
+    #         breed = kwargs["breed"] = kwargs["breed_name"]
+    #         del kwargs["breed_name"]
+    #     else:
+    #         breed = args[0]
+    #     res = self.has_breed(breed=breed)
+
+    @get("v1", "v4", "has_breed")
+    def lens_v1_v4_has_breed(self, f: Callable[[str], str], breed: str) -> bool:
+        res = f(breed)
+        if res == "y" and self.dogs:
+            return True
+        return False
 
     @at("v1")
     def change_dog(self, dog, idx: "Library"):
         # self.dogs.append(dog)
         # self.dogs.append(dog)
-        self.o.dogs.append(dog)
-        self.o.dogs.append(dog)
-        # self.dogs[1][2] = x
+        # self.o = x
+        # self.o.dogs.append(dog)
+        # self.o.dogs.append(dog)
+        self.dogs = [{}, {}]
+        del self.dogs[0]
+        o = Library()
+        x = self.has_breed(breed="pug")
+        if x:
+            return 1
+        o.dogs = [1, 2, 3]
         # print(self.o.dogs)
 
     # @at("v2")

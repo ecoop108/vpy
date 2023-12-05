@@ -14,6 +14,7 @@ from ast import (
     Store,
 )
 import ast
+import copy
 import inspect
 from types import ModuleType
 from typing import Type
@@ -90,10 +91,6 @@ def fields_in_function(node: FunctionDef, fields: set[Field]) -> set[Field]:
     visitor = FieldReferenceCollector(fields)
     visitor.visit(node)
     return visitor.references
-
-
-def get_self_obj(node: FunctionDef) -> str:
-    return node.args.args[0].arg
 
 
 def fresh_var() -> str:
@@ -231,6 +228,21 @@ def field_to_arg(field: Field) -> ast.arg:
     return field_arg
 
 
+def annotation_from_type_value(val: Value) -> str:
+    val = val.simplify()
+    if isinstance(val, TypedValue):
+        if isinstance(val.typ, str):
+            return val.typ
+        elif (t := val.get_type()) is not None:
+            return t.__name__
+        assert False
+    if isinstance(val, KnownValue):
+        if (t := val.get_type()) is not None:
+            return t.__name__
+        assert False
+    return "Any"
+
+
 def create_init(g: Graph, cls_ast: ClassDef, v: VersionId) -> FunctionDef:
     from vpy.lib.lookup import fields_lookup
 
@@ -263,10 +275,7 @@ def create_init(g: Graph, cls_ast: ClassDef, v: VersionId) -> FunctionDef:
         )
         rhs = Name(id=param.name, ctx=Load())
         annotation = None
-        if isinstance(param.type, KnownValue):
-            annotation = Name(id=param.type.get_type().__name__, ctx=Load())
-        if isinstance(param.type, TypedValue):
-            annotation = Name(id=param.type.get_type().__name__, ctx=Load())
+        annotation = Name(id=annotation_from_type_value(param.type), ctx=Load())
         assign = ast.AnnAssign(
             target=lhs,
             annotation=annotation,

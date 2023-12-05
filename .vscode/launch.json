@@ -16,7 +16,7 @@
                 "-i",
                 "examples/api.py",
                 "-t",
-                "v2",
+                "v1",
             ],
             "justMyCode": false
         }
