@@ -38,7 +38,7 @@ def cls_field_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
                             v_from=k.name,
                             field_name=field.name,
                             v_to=t.name,
-                            lens=lens_node,
+                            lens_node=lens_node,
                         )
     return lenses
 
@@ -54,7 +54,7 @@ def cls_method_lenses(g: Graph, cls_ast: ClassDef) -> Lenses:
                             v_from=k.name,
                             field_name=method,
                             v_to=t.name,
-                            lens=lens_node,
+                            lens_node=lens_node,
                         )
     return lenses
 
@@ -138,17 +138,20 @@ def method_lens_lookup(
 
 def __lens_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef
-) -> dict[Field, FunctionDef]:
+) -> dict[Field, FunctionDef | None]:
     """
     Returns the lenses from v to t.
-    """
+    """ 
     fields_v = fields_lookup(g, cls_ast, v)
-    result: dict[Field, FunctionDef] = {}
+    result: dict[Field, FunctionDef | None] = {}
     for field in fields_v:
-        path = field_lens_lookup(g, v, t, cls_ast, field.name)
-        if path is not None:
-            lens = path[0][field.name]
-            result[field] = lens
+        if base(g, cls_ast, t) == v:
+           result[field] = None
+        else:
+            path = field_lens_lookup(g, v, t, cls_ast, field.name)
+            if path is not None:
+                lens = path[0][field.name]
+                result[field] = lens
     return result
 
 

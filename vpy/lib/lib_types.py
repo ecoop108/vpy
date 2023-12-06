@@ -17,7 +17,7 @@ class Lens(NamedTuple):
     v_from: VersionId
     v_target: VersionId
     field: str
-    node: FunctionDef
+    node: FunctionDef | None
 
 
 class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
@@ -28,14 +28,14 @@ class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
             return None
 
     def put(
-        self, v_from: VersionId, v_to: VersionId, field_name: str, lens: FunctionDef
+        self, v_from: VersionId, v_to: VersionId, field_name: str, lens_node: FunctionDef | None
     ) -> None:
         if v_from not in self.data:
             self.data[v_from] = {}
         if field_name not in self.data[v_from]:
             self.data[v_from][field_name] = {}
         self.data[v_from][field_name][v_to] = Lens(
-            v_from=v_from, v_target=v_to, field=field_name, node=lens
+            v_from=v_from, v_target=v_to, field=field_name, node=lens_node
         )
         return None
 

@@ -54,16 +54,12 @@ class ClassTransformer(NodeTransformer):
             node.body.append(create_init(g=g, cls_ast=node, v=self.v))
             for w in g.parents(self.v):
                 for field in lookup.fields_lookup(g, node, w):
-                    id_lens_v_w = create_identity_lens(g, node, self.v, w, field)
                     self.env.get_lenses.put(
-                        v_from=self.v, field_name=field.name, v_to=w, lens=id_lens_v_w
+                        v_from=self.v, field_name=field.name, v_to=w, lens_node=None
                     )
-                    node.body.append(id_lens_v_w)
-                    id_lens_w_v = create_identity_lens(g, node, w, self.v, field)
                     self.env.get_lenses.put(
-                        v_from=w, field_name=field.name, v_to=self.v, lens=id_lens_w_v
+                        v_from=w, field_name=field.name, v_to=self.v, lens_node=None
                     )
-                    node.body.append(id_lens_w_v)
 
         node = SelectMethodsTransformer(g=g, v=self.v).visit(node)
         node = MethodTransformer(g=g, cls_ast=node, env=self.env, target=self.v).visit(

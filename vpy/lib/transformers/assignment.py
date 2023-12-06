@@ -192,7 +192,7 @@ class AssignTransformer(ast.NodeTransformer):
                         v_from=self.env.bases[self.v_from],
                         field_name=field,
                         v_to=self.env.bases[step_target],
-                        lens=put_lens,
+                        lens_node=put_lens,
                     )
                     self.cls_ast.body.append(put_lens)
 
