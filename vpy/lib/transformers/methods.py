@@ -4,7 +4,7 @@ from typing import Any
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName
-from vpy.lib.utils import get_obj_attribute
+from vpy.lib.utils import create_obj_attr
 
 
 class MethodLensTransformer(ast.NodeTransformer):
@@ -67,7 +67,7 @@ class MethodLensTransformer(ast.NodeTransformer):
             method_arg = method_lens.node.args.args.pop(1)
             rw_visitor = RewriteName(
                 src=Name(id=method_arg.arg, ctx=Load()),
-                target=get_obj_attribute(
+                target=create_obj_attr(
                     obj=Name(id=obj_arg.arg, ctx=Load()),
                     attr=method_lens.field,
                     obj_type=self.cls_ast.inferred_value,

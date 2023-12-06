@@ -12,7 +12,6 @@ from vpy.lib.transformers.fields import FieldTransformer
 from vpy.lib.transformers.methods import MethodLensTransformer
 from vpy.lib.transformers.rewrite import ExtractLocalVar
 from vpy.lib.utils import (
-    create_identity_lens,
     create_init,
     get_at,
     graph,

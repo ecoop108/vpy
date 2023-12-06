@@ -25,7 +25,7 @@ from vpy.lib.utils import (
     fields_in_function,
     fresh_var,
     get_at,
-    get_obj_attribute,
+    create_obj_attr,
     is_obj_attribute,
 )
 import ast
@@ -35,7 +35,7 @@ class AssignLhsFieldCollector(ast.NodeVisitor):
     """Collect object field references in targets of an assignment statement."""
 
     def __init__(self):
-        self.__parent = None
+        self.__parent: ast.expr | None = None
         self.references: set[FieldReference] = set()
 
     def visit_Attribute(self, node: Attribute) -> Any:
@@ -119,7 +119,9 @@ class AssignTransformer(ast.NodeTransformer):
         # TODO: Typechecker should prevent this case.
         if step_lens is None:
             assert False
-
+        # Identity lens, no need to rewrite
+        if step_lens.node is None:
+            return [Assign(targets=[lhs], value=rhs)]
         step_target = get_at(step_lens.node)
         # Iterate over lenses from step_target to v_from
         # to detect which attributes are affected
@@ -130,6 +132,11 @@ class AssignTransformer(ast.NodeTransformer):
 
             # Get node of field lens function
             lens_node = lenses[self.env.bases[self.v_from]].node
+
+            # Identity lens
+            if lens_node is None:
+                continue
+
             # If the field in lhs appears in lens function then we conclude that
             # the original assignment will have side-effects in `field` when
             # crossing to version `step_target`.
@@ -149,7 +156,7 @@ class AssignTransformer(ast.NodeTransformer):
                 # infer one from its corresponding get-lens (`lens_node`). We
                 # start by creating an `Attribute` of the form obj.lens, which
                 # will be used to produce a `Call` node.
-                put_lens_attr = get_obj_attribute(
+                put_lens_attr = create_obj_attr(
                     obj=lhs.value,
                     attr=lens_node.name,
                     obj_type=lhs.value.inferred_value,
@@ -168,7 +175,7 @@ class AssignTransformer(ast.NodeTransformer):
                 )
                 for ref in references:
                     if ref.name != lhs.attr:
-                        attr = get_obj_attribute(
+                        attr = create_obj_attr(
                             obj=lhs.value,
                             attr=ref.name,
                             obj_type=lhs.value.inferred_value,
@@ -197,7 +204,7 @@ class AssignTransformer(ast.NodeTransformer):
                     self.cls_ast.body.append(put_lens)
 
                 # Assign the result of calling put lens to `field`.
-                lens_target = get_obj_attribute(
+                lens_target = create_obj_attr(
                     obj=lhs.value,
                     attr=field,
                     ctx=ast.Store(),

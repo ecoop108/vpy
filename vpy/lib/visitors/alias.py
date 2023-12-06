@@ -86,6 +86,10 @@ class AliasVisitor(ast.NodeVisitor):
 
                 mod = sys.modules[cls.__module__]
                 cls_ast, g = parse_class(mod, cls)
+                # m[0]()
+                # a = self.change
+                # a()
+                # TODO: Fix this
                 mname = (
                     node.value.func.attr
                     if isinstance(node.value.func, Attribute)

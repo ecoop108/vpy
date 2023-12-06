@@ -3,12 +3,12 @@ This module provides useful types used throughout the codebase.
 """
 
 from ast import Attribute, Constant, FunctionDef, List, keyword, expr
-from collections import UserDict, defaultdict
+from collections import UserDict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import DefaultDict, NamedTuple, NewType
+from typing import NamedTuple, NewType
 import networkx as nx
-from pyanalyze.value import Value, CanAssignContext
+from pyanalyze.value import Value
 
 VersionId = NewType("VersionId", str)
 

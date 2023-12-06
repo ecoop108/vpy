@@ -94,7 +94,7 @@ from vpy.decorators import at, get, version
 @version(name="v1")
 @version(name="v2", replaces=["v1"])
 @version(name="v4", replaces=["v1"])
-@version(name="v5", replaces=["v2", "v4"])
+@version(name="v5", replaces=["v2", "v1"])
 class Library:
     @at("v1")
     def __init__(self):
@@ -107,8 +107,6 @@ class Library:
 
     @get("v1", "v2", "__init__")
     def lens_v1_v2_init(self, f, *args, **kwargs):
-        kwargs["fn"] = 1
-        kwargs["ln"] = 1
         return f(fn="1", ln="2")
 
     @get("v2", "v1", "dogs")

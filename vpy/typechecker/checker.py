@@ -7,14 +7,13 @@ from vpy.lib import lookup
 from vpy.lib.lib_types import Graph
 from vpy.lib.lookup import (
     base,
-    cls_field_lenses,
+    field_lenses_lookup,
     fields_at,
     fields_lookup,
-    field_lens_lookup,
+    __field_lens_lookup,
     methods_lookup,
 )
 from vpy.lib.utils import (
-    create_identity_lens,
     create_init,
     fields_in_function,
     get_at,
@@ -68,14 +67,6 @@ def check_cls(module: ModuleType, cls_ast: ClassDef) -> tuple[bool, list[str]]:
     for v in g.all():
         if base(g, cls_ast, v.name) is None:
             cls_ast.body.append(create_init(g=g, cls_ast=cls_ast, v=v.name))
-            for w in g.parents(v.name):
-                for field in lookup.fields_lookup(g, cls_ast, w):
-                    cls_ast.body.append(
-                        create_identity_lens(g, cls_ast, v.name, w, field)
-                    )
-                    cls_ast.body.append(
-                        create_identity_lens(g, cls_ast, w, v.name, field)
-                    )
     cls_ast = fix_missing_locations(cls_ast)
     for check in [
         check_version_graph,
@@ -124,7 +115,7 @@ def check_methods(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
 
 def check_missing_field_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
     # cls_ast = copy.deepcopy(cls_ast)
-    lenses = cls_field_lenses(g, cls_ast)
+    lenses = field_lenses_lookup(g, cls_ast)
     for v in g.all():
         methods = methods_lookup(g, cls_ast, v.name)
         lenses_methods = []  # l for w in lenses[v.name].values() for l in w.values()]
@@ -141,20 +132,28 @@ def check_missing_field_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[
                 fields_m = fields_lookup(g, cls_ast, mver)
                 references = fields_in_function(node=m, fields=fields_m)
                 for ref in references:
-                    path = field_lens_lookup(
-                        g,
-                        mver,
-                        v.name,
-                        cls_ast,
-                        ref.name,
-                    )
-                    if path is None:
+                    if ref.name not in lenses[mver] or v.name not in lenses[mver][ref.name]:
                         return (
                             False,
                             [
                                 f"No path between versions {mver} and {v.name} for field {ref.name} in method {m.name}"
                             ],
                         )
+
+                    # path = field_lens_lookup(
+                    #     g,
+                    #     mver,
+                    #     v.name,
+                    #     cls_ast,
+                    #     ref.name,
+                    # )
+                    # if path is None:
+                    #     return (
+                    #         False,
+                    #         [
+                    #             f"No path between versions {mver} and {v.name} for field {ref.name} in method {m.name}"
+                    #         ],
+                    #     )
     return (True, [])
 
 

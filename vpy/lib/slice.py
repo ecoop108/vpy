@@ -12,11 +12,12 @@ from vpy.typechecker.checker import check_cls
 
 
 def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
+    #TODO: Fix this
     cls_ast, g = parse_class(module, cls)
     status, err = check_cls(module, cls_ast)
     if not status:
         raise Exception(err)
-    lenses = lookup.cls_field_lenses(g, cls_ast)
+    lenses = lookup.field_lenses_lookup(g, cls_ast)
     fields = {}
     bases = {}
     for k in g.all():
