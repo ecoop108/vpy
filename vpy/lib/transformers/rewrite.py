@@ -109,26 +109,20 @@ class ExtractLocalVar(ast.NodeTransformer):
         return expr_before + [node] + expr_after
 
     def visit_AnnAssign(self, node: AnnAssign) -> Any:
-        target_field_visitor = FieldReplacementVisitor(self)
-        target_field_visitor.visit(node.target)
-        target_replacements = target_field_visitor.fields
-
         val_field_visitor = FieldReplacementVisitor(self)
         if node.value:
             val_field_visitor.visit(node.value)
         val_replacements = val_field_visitor.fields
 
-        if target_replacements or val_replacements:
+        if val_replacements:
             return self.visit(Assign(targets=[node.target], value=node.value))
 
         return node
 
     def visit_AugAssign(self, node: AugAssign) -> Any:
-        target_field_visitor = FieldReplacementVisitor(self)
-        target_field_visitor.visit(node.target)
         value_field_visitor = FieldReplacementVisitor(self)
         value_field_visitor.visit(node.value)
-        if target_field_visitor.fields or value_field_visitor.fields:
+        if value_field_visitor.fields:
             left_node = copy.deepcopy(node.target)
             left_node.ctx = ast.Load()
             assign = Assign(

@@ -10,12 +10,16 @@ from ast import (
     Tuple,
     keyword,
 )
-from collections import namedtuple
+from typing import Any
 import copy
-from typing import Any, NamedTuple
-from weakref import ref
-from vpy.lib.lib_types import Environment, Field, FieldReference, Graph, VersionId
 from vpy.lib.transformers.lens import PutLens
+from vpy.lib.lib_types import (
+    Environment,
+    Field,
+    FieldReference,
+    Graph,
+    VersionId,
+)
 from vpy.lib.utils import (
     annotation_from_type_value,
     fields_in_function,
@@ -67,8 +71,8 @@ class AssignLhsFieldCollector(ast.NodeVisitor):
 
 class AssignTransformer(ast.NodeTransformer):
     """
-    Transformer to rewrite expressions that assign values to fields (or aliases) of a class
-    from version v_from to version v_target.
+    Transformer to rewrite expressions that assign values to fields (or aliases)
+    of a class from version v_from to version v_target.
     """
 
     def __init__(
@@ -101,8 +105,8 @@ class AssignTransformer(ast.NodeTransformer):
 
     def __rw_assign(self, lhs: Attribute, rhs: ast.expr) -> list[ast.AST]:
         """
-        Rewrite a simple assignment statement of the form lhs = rhs (where lhs is an object field)
-        from version self.v_from to version self.v_target.
+        Rewrite a simple assignment statement of the form lhs = rhs (where lhs
+        is an object field) from version self.v_from to version self.v_target.
         """
         exprs: list[ast.AST] = []
 
@@ -124,26 +128,40 @@ class AssignTransformer(ast.NodeTransformer):
             if self.v_from not in lenses:
                 continue
 
-            # Check if field in lhs appears in lens function
+            # Get node of field lens function
             lens_node = lenses[self.env.bases[self.v_from]].node
+            # If the field in lhs appears in lens function then we conclude that
+            # the original assignment will have side-effects in `field` when
+            # crossing to version `step_target`.
             if (
+                # TODO: type must match not just field name
                 len(
                     fields_in_function(
-                        lens_node, {Field(name=lhs.attr, type=lhs.inferred_value)}
+                        lens_node,
+                        {Field(name=lhs.attr, type=lhs.inferred_value)},
                     )
                 )
                 > 0
             ):
-                # Change field name to put-lens method call
+                # To reflect the side-effects of the assignment to `field`
+                # (defined in version `self.v_from`) in version `step_target` we
+                # use its corresponding put-lens. If none is defined, we can
+                # infer one from its corresponding get-lens (`lens_node`). We
+                # start by creating an `Attribute` of the form obj.lens, which
+                # will be used to produce a `Call` node.
                 put_lens_attr = get_obj_attribute(
                     obj=lhs.value,
                     attr=lens_node.name,
                     obj_type=lhs.value.inferred_value,
                     attr_type=lens_node.inferred_value,
                 )
-                # Add right-hand side of assignment as keyword argument
+                # Then we add the right-hand side of assignment (`rhs`) as a
+                # keyword argument.
                 keywords = [keyword(arg=lhs.attr, value=rhs)]
-                # Add other fields referenced in lens as arguments
+
+                # All other field references (`ref`) in `lens_node` are added as
+                # keyword arguments where the keyword is the field name and the
+                # value is the object's current value (`obj.ref`)
                 obj_type = annotation_from_type_value(lhs.value.inferred_value)
                 references = fields_in_function(
                     lens_node, self.env.fields[obj_type][self.v_from]
@@ -156,12 +174,12 @@ class AssignTransformer(ast.NodeTransformer):
                             obj_type=lhs.value.inferred_value,
                             attr_type=ref.type,
                         )
-                        attr = self.visit(attr)
                         keywords.append(keyword(arg=ref.name, value=attr))
-
+                # Finally we create the call node in the form of
+                # `obj.lens(field=rhs, f0=obj.f0,..,fn=obj.fn)`.
                 self_call = Call(func=put_lens_attr, args=[], keywords=keywords)
 
-                # Add put lens definition to class body if missing
+                # Add put lens definition to class body if missing.
                 if not self.env.put_lenses.has_lens(
                     v_from=self.v_from,
                     v_to=step_target,
@@ -178,7 +196,7 @@ class AssignTransformer(ast.NodeTransformer):
                     )
                     self.cls_ast.body.append(put_lens)
 
-                # Rewrite assignment using put lens
+                # Assign the result of calling put lens to `field`.
                 lens_target = get_obj_attribute(
                     obj=lhs.value,
                     attr=field,
@@ -272,7 +290,9 @@ class AssignTransformer(ast.NodeTransformer):
             for target in node.targets:
                 # We select all references that have this target as parent.
                 references = [
-                    ref.ref_node for ref in ref_visitor.references if ref.node == target
+                    ref.ref_node
+                    for ref in ref_visitor.references
+                    if ref.node == target
                 ]
                 # If the target has no field references, it remains intact.
                 if len(references) == 0:
@@ -292,7 +312,9 @@ class AssignTransformer(ast.NodeTransformer):
                         exprs.append(local_assign)
                         node_copy = copy.copy(target)
                         node_copy.value = local_var
-                        local_assign = Assign(targets=[node_copy], value=node.value)
+                        local_assign = Assign(
+                            targets=[node_copy], value=node.value
+                        )
                         exprs.append(local_assign)
                         exprs += self.__rw_assign(ref, local_var)
                 elif isinstance(target, Tuple) or isinstance(target, List):

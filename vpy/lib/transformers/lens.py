@@ -9,10 +9,8 @@ from vpy.lib.utils import (
     field_to_arg,
     fields_in_function,
     graph,
-    is_field,
 )
 import ast
-
 
 class IdentityLens(ast.NodeTransformer):
     def __init__(self, v: VersionId):
@@ -37,6 +35,7 @@ class PutLens(ast.NodeTransformer):
 
     def __init__(self, fields: set[Field]):
         self.fields = fields
+        self.__obj_arg: str | None = None
 
     def visit_FunctionDef(self, node):
         references = fields_in_function(node, self.fields)
@@ -50,18 +49,15 @@ class PutLens(ast.NodeTransformer):
                 and dec.func.id == "get"
             ):
                 dec.func.id = "put"
-        # if node.returns is None:
-        #     node.returns = Name(id=lens_field.type.simplify().__name__, ctx=Load())
+        self.__obj_arg = node.args.args[0].arg
         self.generic_visit(node)
+        self.__obj_arg = None
         return node
 
     def visit_Attribute(self, node):
-        # TODO: Fix this for nested fields
-        if is_field(node, self.fields) and isinstance(node.ctx, ast.Load):
+        if isinstance(node.value, Name) and self.__obj_arg == node.value.id:
             name_node = Name(id=node.attr, ctx=ast.Load())
-            name_node.inferred_value = [f for f in self.fields if f.name == node.attr][
-                0
-            ].type
+            name_node.inferred_value = node.inferred_value
             node = name_node
         else:
             node.value = self.visit(node.value)

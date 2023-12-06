@@ -88,6 +88,7 @@ class FieldReferenceCollector(NodeVisitor):
 
 
 def fields_in_function(node: FunctionDef, fields: set[Field]) -> set[Field]:
+    # TODO: Check if obj same as 1st arg?
     visitor = FieldReferenceCollector(fields)
     visitor.visit(node)
     return visitor.references
