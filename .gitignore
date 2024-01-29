@@ -255,3 +255,4 @@ flycheck_*.el
 
 .pylintrc
 .vscode/settings.json
+.vscode/launch.json
