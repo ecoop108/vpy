@@ -76,11 +76,10 @@ class Name:
 
 @run("full")
 def main():
-    pass
-    # obj = Name("Rolling Stones")
-    # print(obj.get_full_name())
-    # obj.set_last("Stoned")
-    # print(obj.get_full_name())
+    obj = Name("Rolling Stones")
+    print(obj.get_full_name())
+    obj.set_last("Stoned")
+    print(obj.get_full_name())
 
 
 if __name__ == "__main__":
