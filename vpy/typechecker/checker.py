@@ -3,20 +3,12 @@ from types import ModuleType
 
 from networkx import find_cycle
 from networkx.exception import NetworkXNoCycle
-from vpy.lib import lookup
-from vpy.lib.lib_types import Graph
-from vpy.lib.lookup import (
-    base,
-    field_lenses_lookup,
-    fields_at,
-    fields_lookup,
-    __field_lens_lookup,
-    methods_lookup,
-)
+from vpy.lib.lib_types import Environment, Graph
 from vpy.lib.utils import (
     create_init,
     fields_in_function,
     get_at,
+    get_module_environment,
     graph,
     parse_module,
 )
@@ -54,33 +46,30 @@ from vpy.lib.utils import (
 
 def check_module(module: ModuleType) -> tuple[bool, list[str]]:
     mod_ast = parse_module(module)
+    mod_env = get_module_environment(mod_ast)
     for node in mod_ast.body:
         if isinstance(node, ClassDef):
-            return check_cls(module, node)
+            return check_cls(module, node, mod_env)
     return (True, [])
     # return check_cls(module)
 
 
-def check_cls(module: ModuleType, cls_ast: ClassDef) -> tuple[bool, list[str]]:
+def check_cls(
+    module: ModuleType, cls_ast: ClassDef, env: Environment
+) -> tuple[bool, list[str]]:
     g = graph(cls_ast)
-    # cls_ast, g = parse_class(module, cls)
-    for v in g.all():
-        if base(g, cls_ast, v.name) is None:
-            cls_ast.body.append(create_init(g=g, cls_ast=cls_ast, v=v.name))
-    cls_ast = fix_missing_locations(cls_ast)
     for check in [
         check_version_graph,
-        check_state,
         check_methods,
         check_missing_field_lenses,
     ]:
-        status, err = check(g, cls_ast)
+        status, err = check(g, cls_ast, env)
         if not status:
             return (False, err)
     return (True, [])
 
 
-def check_version_graph(g: Graph, cls_ast: ClassDef):
+def check_version_graph(g: Graph, cls_ast: ClassDef, env: Environment):
     try:
         find_cycle(g)
         return (False, ["Invalid version graph."])
@@ -88,72 +77,55 @@ def check_version_graph(g: Graph, cls_ast: ClassDef):
         return (True, [])
 
 
-def check_state(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
-    # for v in g.all():
-    #     if base(g, cls_ast, v.name) is None:
-    #         return (
-    #             False,
-    #             [
-    #                 f"State conflict in version {v.name}: merge state of {g.parents(v.name)}"
-    #             ],
-    #         )
-    return (True, [])
-
-
-def check_methods(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
+def check_methods(
+    g: Graph, cls_ast: ClassDef, env: Environment
+) -> tuple[bool, list[str]]:
     for v in g.all():
-        for m in methods_lookup(g, cls_ast, v.name):
+        for m in env.methods[cls_ast.name][v.name]:
             if isinstance(m, tuple):
                 return (
                     False,
                     [
-                        f"Conflict {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}"
+                        f"Conflict {m[0].name}:"
+                        f" {v, [get_at(n) for n in m if get_at(n) != v]}"
                     ],
                 )
     return (True, [])
 
 
-def check_missing_field_lenses(g: Graph, cls_ast: ClassDef) -> tuple[bool, list[str]]:
-    # cls_ast = copy.deepcopy(cls_ast)
-    lenses = field_lenses_lookup(g, cls_ast)
+def check_missing_field_lenses(
+    g: Graph, cls_ast: ClassDef, env: Environment
+) -> tuple[bool, list[str]]:
+    lenses = env.get_lenses[cls_ast.name]
     for v in g.all():
-        methods = methods_lookup(g, cls_ast, v.name)
-        lenses_methods = []  # l for w in lenses[v.name].values() for l in w.values()]
-        for m in methods.union(set(lenses_methods)):
+        methods = env.methods[cls_ast.name][v.name]
+        lenses_methods = {
+            l.node
+            for w in lenses[v.name].values()
+            for l in w.values()
+            if l.node is not None
+        }
+        # l for w in lenses[v.name].values() for l in w.values()]
+        for m in methods.union(lenses_methods):
             if isinstance(m, tuple):
                 assert False
             mver = get_at(m)
-            fields_v = fields_at(g=g, cls_ast=cls_ast, v=v.name)
-            if (
-                mver != v.name
-                and len(fields_v) > 0
-                and base(g, cls_ast, mver) != base(g, cls_ast, v.name)
-            ):
-                fields_m = fields_lookup(g, cls_ast, mver)
-                references = fields_in_function(node=m, fields=fields_m)
+            if mver != v.name and mver not in env.bases[cls_ast.name][v.name]:
+                references = fields_in_function(
+                    node=m, fields=env.fields[cls_ast.name][mver]
+                )
                 for ref in references:
-                    if ref.name not in lenses[mver] or v.name not in lenses[mver][ref.name]:
+                    if (
+                        ref.name not in lenses[mver]
+                        or v.name not in lenses[mver][ref.name]
+                    ):
                         return (
                             False,
                             [
-                                f"No path between versions {mver} and {v.name} for field {ref.name} in method {m.name}"
+                                f"No path between versions {mver} and {v.name} for"
+                                f" field {ref.name} in method {m.name}"
                             ],
                         )
-
-                    # path = field_lens_lookup(
-                    #     g,
-                    #     mver,
-                    #     v.name,
-                    #     cls_ast,
-                    #     ref.name,
-                    # )
-                    # if path is None:
-                    #     return (
-                    #         False,
-                    #         [
-                    #             f"No path between versions {mver} and {v.name} for field {ref.name} in method {m.name}"
-                    #         ],
-                    #     )
     return (True, [])
 
 

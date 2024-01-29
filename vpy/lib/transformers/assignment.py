@@ -27,6 +27,8 @@ from vpy.lib.utils import (
     get_at,
     create_obj_attr,
     is_obj_attribute,
+    set_typeof_node,
+    typeof_node,
 )
 import ast
 
@@ -44,7 +46,7 @@ class AssignLhsFieldCollector(ast.NodeVisitor):
             self.references.add(
                 FieldReference(
                     node=parent_node,
-                    field=Field(name=node.attr, type=node.inferred_value),
+                    field=Field(name=node.attr, type=typeof_node(node)),
                     ref_node=node,
                 )
             )
@@ -109,9 +111,10 @@ class AssignTransformer(ast.NodeTransformer):
         is an object field) from version self.v_from to version self.v_target.
         """
         exprs: list[ast.AST] = []
-
+        obj_type = annotation_from_type_value(typeof_node(lhs.value))
+        lenses = self.env.get_lenses[obj_type]
         # Get first component of path between v_from and v_target
-        step_lens = self.env.get_lenses.get(
+        step_lens = lenses.find_lens(
             v_from=self.v_from,
             field_name=lhs.attr,
             v_to=self.v_target,
@@ -126,12 +129,12 @@ class AssignTransformer(ast.NodeTransformer):
         # Iterate over lenses from step_target to v_from
         # to detect which attributes are affected
         # by a change to the field in lhs
-        for field, lenses in self.env.get_lenses[step_target].items():
-            if self.v_from not in lenses:
+        for field, step_lenses in lenses[step_target].items():
+            if self.v_from not in step_lenses:
                 continue
 
             # Get node of field lens function
-            lens_node = lenses[self.env.bases[self.v_from]].node
+            lens_node = step_lenses[self.v_from].node
 
             # Identity lens
             if lens_node is None:
@@ -145,7 +148,7 @@ class AssignTransformer(ast.NodeTransformer):
                 len(
                     fields_in_function(
                         lens_node,
-                        {Field(name=lhs.attr, type=lhs.inferred_value)},
+                        {Field(name=lhs.attr, type=typeof_node(lhs))},
                     )
                 )
                 > 0
@@ -159,8 +162,8 @@ class AssignTransformer(ast.NodeTransformer):
                 put_lens_attr = create_obj_attr(
                     obj=lhs.value,
                     attr=lens_node.name,
-                    obj_type=lhs.value.inferred_value,
-                    attr_type=lens_node.inferred_value,
+                    obj_type=typeof_node(lhs.value),
+                    attr_type=typeof_node(lens_node),
                 )
                 # Then we add the right-hand side of assignment (`rhs`) as a
                 # keyword argument.
@@ -169,7 +172,7 @@ class AssignTransformer(ast.NodeTransformer):
                 # All other field references (`ref`) in `lens_node` are added as
                 # keyword arguments where the keyword is the field name and the
                 # value is the object's current value (`obj.ref`)
-                obj_type = annotation_from_type_value(lhs.value.inferred_value)
+                obj_type = annotation_from_type_value(typeof_node(lhs.value))
                 references = fields_in_function(
                     lens_node, self.env.fields[obj_type][self.v_from]
                 )
@@ -178,7 +181,7 @@ class AssignTransformer(ast.NodeTransformer):
                         attr = create_obj_attr(
                             obj=lhs.value,
                             attr=ref.name,
-                            obj_type=lhs.value.inferred_value,
+                            obj_type=typeof_node(lhs.value),
                             attr_type=ref.type,
                         )
                         keywords.append(keyword(arg=ref.name, value=attr))
@@ -187,7 +190,7 @@ class AssignTransformer(ast.NodeTransformer):
                 self_call = Call(func=put_lens_attr, args=[], keywords=keywords)
 
                 # Add put lens definition to class body if missing.
-                if not self.env.put_lenses.has_lens(
+                if not self.env.put_lenses[obj_type].has_lens(
                     v_from=self.v_from,
                     v_to=step_target,
                     field_name=field,
@@ -195,10 +198,10 @@ class AssignTransformer(ast.NodeTransformer):
                     put_lens = PutLens(
                         fields=self.env.fields[obj_type][self.v_from]
                     ).visit(copy.deepcopy(lens_node))
-                    self.env.put_lenses.put(
-                        v_from=self.env.bases[self.v_from],
+                    self.env.put_lenses[obj_type].add_lens(
+                        v_from=self.v_from,
                         field_name=field,
-                        v_to=self.env.bases[step_target],
+                        v_to=step_target,
                         lens_node=put_lens,
                     )
                     self.cls_ast.body.append(put_lens)
@@ -208,7 +211,7 @@ class AssignTransformer(ast.NodeTransformer):
                     obj=lhs.value,
                     attr=field,
                     ctx=ast.Store(),
-                    obj_type=lhs.value.inferred_value,
+                    obj_type=typeof_node(lhs.value),
                 )
                 lens_assign = Assign(targets=[lens_target], value=self_call)
                 exprs.append(lens_assign)
@@ -289,7 +292,7 @@ class AssignTransformer(ast.NodeTransformer):
             # we have multiple targets, or a single tuple target.
             if len(node.targets) > 1 or isinstance(node.targets[0], Tuple):
                 local_var = Name(id=fresh_var(), ctx=ast.Store())
-                local_var.inferred_value = node.value.inferred_value
+                set_typeof_node(local_var, typeof_node(node.value))
                 local_assign = Assign(targets=[local_var], value=node.value)
                 exprs.append(local_assign)
                 node.value = local_var
@@ -297,9 +300,7 @@ class AssignTransformer(ast.NodeTransformer):
             for target in node.targets:
                 # We select all references that have this target as parent.
                 references = [
-                    ref.ref_node
-                    for ref in ref_visitor.references
-                    if ref.node == target
+                    ref.ref_node for ref in ref_visitor.references if ref.node == target
                 ]
                 # If the target has no field references, it remains intact.
                 if len(references) == 0:
@@ -314,14 +315,12 @@ class AssignTransformer(ast.NodeTransformer):
                 elif isinstance(target, Subscript):
                     for ref in references:
                         local_var = Name(id=fresh_var(), ctx=ast.Store())
-                        local_var.inferred_value = ref.inferred_value
+                        set_typeof_node(local_var, typeof_node(ref))
                         local_assign = Assign(targets=[local_var], value=ref)
                         exprs.append(local_assign)
                         node_copy = copy.copy(target)
                         node_copy.value = local_var
-                        local_assign = Assign(
-                            targets=[node_copy], value=node.value
-                        )
+                        local_assign = Assign(targets=[node_copy], value=node.value)
                         exprs.append(local_assign)
                         exprs += self.__rw_assign(ref, local_var)
                 elif isinstance(target, Tuple) or isinstance(target, List):
@@ -329,7 +328,7 @@ class AssignTransformer(ast.NodeTransformer):
                         val = Subscript(
                             value=node.value, slice=ast.Constant(value=index)
                         )
-                        val.inferred_value = el.inferred_value
+                        set_typeof_node(val, typeof_node(el))
                         if el in references:
                             el = self.__rw_assign(el, val)
                             exprs += el

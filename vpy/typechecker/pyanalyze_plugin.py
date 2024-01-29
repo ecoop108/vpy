@@ -1,8 +1,12 @@
-import ast
-from pyanalyze.ast_annotator import annotate_file
-from pyanalyze.value import dump_value
+from ast import ClassDef, FunctionDef, Module
+from logging import CRITICAL
+from typing import Any, Mapping, Optional
+from pyanalyze.name_check_visitor import NameCheckVisitor, ClassAttributeChecker
+from vpy.lib.lib_types import Environment
+from vpy.lib.lookup import methods_lookup
+from enum import Enum
+from vpy.lib.utils import get_at, graph, is_obj_attribute, typeof_node
 
-# tree = annotate_file("/home/lc/vfj/counter.py")
-# for n in ast.walk(tree):
-#     if isinstance(n, ast.Attribute):
-#         print(ast.unparse(n.value), dump_value(n.value.inferred_value))
+
+class TypeCheckerVisitor(ClassAttributeChecker):
+    pass

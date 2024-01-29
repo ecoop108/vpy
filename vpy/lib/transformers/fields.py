@@ -9,8 +9,9 @@ from vpy.lib.utils import (
     create_obj_attr,
     has_get_lens,
     is_obj_attribute,
+    set_typeof_node,
+    typeof_node,
 )
-
 
 
 class FieldTransformer(ast.NodeTransformer):
@@ -37,14 +38,18 @@ class FieldTransformer(ast.NodeTransformer):
         if not (is_obj_attribute(node) and isinstance(node.ctx, ast.Load)):
             node = self.generic_visit(node)
             return node
-        obj_type = annotation_from_type_value(node.value.inferred_value)
+        obj_type = annotation_from_type_value(typeof_node(node.value))
         if obj_type not in self.env.fields:
             return node
         else:
-            lens = self.env.get_lenses.get(
-                v_from=self.env.bases[self.v_from],
+            if node.attr not in [
+                f.name for f in self.env.fields[obj_type][self.v_from]
+            ]:
+                return node
+            lens = self.env.get_lenses[obj_type].find_lens(
+                v_from=self.v_from,
                 field_name=node.attr,
-                v_to=self.env.bases[self.v_target],
+                v_to=self.v_target,
             )
             if lens is None:
                 assert False
@@ -55,11 +60,11 @@ class FieldTransformer(ast.NodeTransformer):
             self_attr = create_obj_attr(
                 obj=node.value,
                 attr=lens_node.name,
-                obj_type=node.value.inferred_value,
-                attr_type=node.inferred_value,
+                obj_type=typeof_node(node.value),
+                attr_type=typeof_node(node),
             )
             self_call = Call(func=self_attr, args=[], keywords=[])
-            self_call.inferred_value = node.value.inferred_value
+            set_typeof_node(self_call, typeof_node(node.value))
             if not has_get_lens(self.cls_ast, lens_node):
                 from vpy.lib.transformers.cls import MethodTransformer
 

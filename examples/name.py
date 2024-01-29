@@ -1,92 +1,86 @@
+# This file covers the examples shown in the paper.
+
+from typing import Callable
 from vpy.decorators import at, get, run, version
 
 
-@version(name='start')
-@version(name='s', replaces=['start'])
-@version(name='full', replaces=['s'])
+@version(name="init")
+@version(name="bugfix", replaces=["init"])
+@version(name="full", upgrades=["init"])
 class Name:
-
-    @at('start')
+    @at("init")
     def __init__(self, first: str, last: str):
-        self.first: str = first
-        self.last: str = last
+        self.first = first
+        self.last = last
 
-    @at('s')
-    def __init__(self, first: str, last: str):
-        self.f: str = first
-        self.l: str = last
-
-    @at('full')
+    @at("full")
     def __init__(self, full: str):
-        self.full_name: str = full
+        self.fullname = full
 
-    @get('start', 's', 'f')
-    def lens_f(self) -> str:
-        return self.first
+    @at("init")
+    def display(self):
+        return f"{self.first}, {self.last}"
 
-    @get('start', 's', 'l')
-    def lens_l(self) -> str:
-        return self.last
+    @at("bugfix")
+    def display(self):
+        return f"{self.last}, {self.first}"
 
-    @get('s', 'start', 'first')
-    def lens_first(self) -> str:
-        return self.f
+    @at("init")
+    def set_last(self, name: str):
+        self.last = name
 
-    @get('s', 'start', 'last')
-    def lens_last2(self) -> str:
-        return self.l
+    @at("full")
+    def get_full_name(self):
+        return self.fullname
 
-    @get('full', 's', 'f')
-    def lens_first(self) -> str:
-        if ' ' in self.full_name:
-            first = self.full_name.split(' ')[0]
-            return first
-        return self.full_name
+    @get("full", "init", "first")
+    def lens_first(self):
+        if " " in self.fullname:
+            return self.fullname.split(" ")[0]
+        return self.fullname
 
-    @get('full', 's', 'l')
-    def lens_last1(self) -> str:
-        if ' ' in self.full_name:
-            last = self.full_name.split(' ')[1]
-            return last
-        return ''
+    @get("full", "init", "last")
+    def lens_last(self):
+        if " " in self.fullname:
+            return self.fullname.split(" ")[1]
+        return ""
 
-    @get('s', 'full', 'full_name')
+    @get("init", "full", "fullname")
     def lens_full(self):
-        return f"{self.f} {self.l}"
+        return f"{self.first} {self.last}"
 
-    @at('start')
-    def reverse(self):
-        return self.last + ", " + self.first
+    @at("init")
+    def m(self) -> bool:
+        return True
 
-    @at('full')
-    def get(self):
-        return self.full_name
+    @at("full")
+    def m(self) -> int:
+        return 0
 
-    # @at('full')
-    # def set_name(self, val: str):
-    #     self.full_name = val
+    @at("init")
+    def t(self) -> bool:
+        return not self.m()
 
-    # @at('start')
-    # def set_last(self, some_name):
-    #     self.last, self.first, y = x = ("1","2",3)
-    #     self.last = some_name
+    @at("full")
+    def w(self) -> bool:
+        return self.m() == 0
+
+    @get("init", "full", "m")
+    def lens_m(self, f: Callable[[], int]) -> bool:
+        return f() == 0
+
+    @get("full", "init", "m")
+    def lens_m_v2(self, f: Callable[[], bool]) -> int:
+        return 0 if f() else 1
 
 
-@run('full')
+@run("full")
 def main():
-    obj = Name('Rolling Stones')
-    print(obj.get())
-    print(obj.reverse())
-    obj.set_last("Stoned")
-    print(obj.get())
-    name_switch_context()
-
-
-@run('start')
-def name_switch_context():
-    obj = Name("Bob", "Dylan")
-    print(obj.get())  # Bob Dylan
-    obj.set_last("Marley")
+    pass
+    # obj = Name("Rolling Stones")
+    # print(obj.get_full_name())
+    # obj.set_last("Stoned")
+    # print(obj.get_full_name())
 
 
 if __name__ == "__main__":

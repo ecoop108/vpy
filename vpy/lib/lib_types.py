@@ -2,10 +2,10 @@
 This module provides useful types used throughout the codebase.
 """
 
-from ast import Attribute, Constant, FunctionDef, List, keyword, expr
+from ast import Attribute, ClassDef, Constant, FunctionDef, List, keyword, expr
 from collections import UserDict
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NamedTuple, NewType
 import networkx as nx
 from pyanalyze.value import Value
@@ -21,14 +21,20 @@ class Lens(NamedTuple):
 
 
 class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
-    def get(self, v_from: VersionId, v_to: VersionId, field_name: str) -> Lens | None:
+    def find_lens(
+        self, v_from: VersionId, v_to: VersionId, field_name: str
+    ) -> Lens | None:
         try:
             return self.data[v_from][field_name][v_to]
         except KeyError:
             return None
 
-    def put(
-        self, v_from: VersionId, v_to: VersionId, field_name: str, lens_node: FunctionDef | None
+    def add_lens(
+        self,
+        v_from: VersionId,
+        v_to: VersionId,
+        field_name: str,
+        lens_node: FunctionDef | None,
     ) -> None:
         if v_from not in self.data:
             self.data[v_from] = {}
@@ -59,11 +65,13 @@ class FieldReference(NamedTuple):
 
 @dataclass
 class Environment:
-    fields: dict[str, dict[VersionId, set[Field]]]
-    get_lenses: Lenses
-    put_lenses: Lenses
-    method_lenses: Lenses
-    bases: dict[VersionId, VersionId]
+    bases: dict[str, dict[VersionId, set[VersionId]]] = field(default_factory=dict)
+    fields: dict[str, dict[VersionId, set[Field]]] = field(default_factory=dict)
+    methods: dict[str, dict[VersionId, set[FunctionDef]]] = field(default_factory=dict)
+    get_lenses: dict[str, Lenses] = field(default_factory=dict)
+    put_lenses: dict[str, Lenses] = field(default_factory=dict)
+    method_lenses: dict[str, Lenses] = field(default_factory=dict)
+    cls_ast: dict[str, ClassDef] = field(default_factory=dict)
 
 
 class Version:

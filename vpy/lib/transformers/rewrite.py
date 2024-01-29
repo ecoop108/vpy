@@ -33,8 +33,11 @@ from typing import Any
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.utils import (
+    annotation_from_type_value,
     fresh_var,
     is_field,
+    set_typeof_node,
+    typeof_node,
 )
 
 
@@ -46,7 +49,7 @@ class RewriteName(ast.NodeTransformer):
     def visit_Attribute(self, node):
         if node == self.src:
             name = copy.deepcopy(self.target)
-            name.inferred_value = node.inferred_value
+            set_typeof_node(name, typeof_node(node))
             node = name
         self.generic_visit(node)
         return node
@@ -54,7 +57,7 @@ class RewriteName(ast.NodeTransformer):
     def visit_Name(self, node):
         if isinstance(self.src, Name) and node.id == self.src.id:
             name = copy.deepcopy(self.target)
-            name.inferred_value = node.inferred_value
+            set_typeof_node(name, typeof_node(node))
             node = name
         return node
 
@@ -184,20 +187,21 @@ class ExtractLocalVar(ast.NodeTransformer):
         assert False
 
     def visit_Delete(self, node: Delete) -> Any:
-        expr_before = []
-        for target in node.targets:
-            field_visitor = FieldReplacementVisitor(self)
-            field_visitor.visit(target)
-            replacements = field_visitor.fields
-            for idx, (attr, var) in enumerate(replacements.items()):
-                if all(
-                    v != var for i, v in enumerate(replacements.values()) if i < idx
-                ):
-                    var_assign = Assign(targets=[var], value=attr)
-                    expr_before.append(var_assign)
-                visitor = RewriteName(src=attr, target=var)
-                target = visitor.visit(target)
-        return expr_before + [node]
+        assert False
+        # expr_before = []
+        # for target in node.targets:
+        #     field_visitor = FieldReplacementVisitor(self)
+        #     field_visitor.visit(target)
+        #     replacements = field_visitor.fields
+        #     for idx, (attr, var) in enumerate(replacements.items()):
+        #         if all(
+        #             v != var for i, v in enumerate(replacements.values()) if i < idx
+        #         ):
+        #             var_assign = Assign(targets=[var], value=attr)
+        #             expr_before.append(var_assign)
+        #         visitor = RewriteName(src=attr, target=var)
+        #         target = visitor.visit(target)
+        # return expr_before + [node]
 
     def visit_With(self, node: With) -> Any:
         assert False
@@ -439,14 +443,10 @@ class FieldReplacementVisitor(NodeVisitor):
 
     def visit_Attribute(self, node: Attribute) -> Any:
         if isinstance(node.ctx, Load):
-            obj_type = node.value.inferred_value.get_type()
-            if (
-                obj_type
-                and obj_type.__name__ in self.visitor.env.fields
-                and is_field(
-                    node,
-                    self.visitor.env.fields[obj_type.__name__][self.visitor.v_from],
-                )
+            obj_type = annotation_from_type_value(typeof_node(node.value))
+            if obj_type in self.visitor.env.fields and is_field(
+                node,
+                self.visitor.env.fields[obj_type][self.visitor.v_from],
             ):
                 if node in self.visitor.aliases:
                     if self.visitor.aliases[node] in self.fields:

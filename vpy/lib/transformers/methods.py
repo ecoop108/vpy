@@ -1,10 +1,18 @@
 import ast
-from ast import Attribute, Call, ClassDef, FunctionDef, Load, Name
+from ast import Attribute, Call, ClassDef, FunctionDef, Load, Name, Return, keyword
+from copy import deepcopy
 from typing import Any
 
+from vpy.lib.lookup import _method_lookup
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName
-from vpy.lib.utils import create_obj_attr
+from vpy.lib.utils import (
+    annotation_from_type_value,
+    create_obj_attr,
+    get_at,
+    is_lens,
+    typeof_node,
+)
 
 
 class MethodLensTransformer(ast.NodeTransformer):
@@ -27,8 +35,62 @@ class MethodLensTransformer(ast.NodeTransformer):
         self.v_from = v_from
 
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef:
+        from vpy.lib.transformers.cls import MethodTransformer
+
+        if is_lens(node):
+            return node
+        method_lens = self.env.method_lenses[self.cls_ast.name].find_lens(
+            self.v_target, self.v_from, node.name
+        )
+
+        if method_lens is not None:
+            mdef = _method_lookup(
+                Graph(graph={self.v_target: self.g.find_version(self.v_target)}),
+                self.env.cls_ast[self.cls_ast.name],
+                node.name,
+                self.v_target,
+            )
+            node_copy = deepcopy(node)
+            node_copy.name = f"__{self.v_from}__" + node.name
+            node = node_copy
+
+            if mdef is not None and mdef not in self.cls_ast.body:
+                mdef = deepcopy(mdef)
+                args = node.args.args[1:]
+                self_attr = create_obj_attr(
+                    obj=Name(id="self", ctx=Load()),
+                    attr=method_lens.node.name,
+                    obj_type=typeof_node(self.cls_ast),
+                    attr_type=typeof_node(method_lens.node),
+                )
+                method_lens_call = Call(func=self_attr, args=args, keywords=[])
+                mdef.body = [Return(value=method_lens_call)]
+                self.cls_ast.body.append(mdef)
+
+            if not hasattr(method_lens.node, "added"):
+                # Rewrite lens body to version v_target
+                method_visitor = MethodTransformer(
+                    self.g, self.cls_ast, self.env, self.v_target
+                )
+                method_visitor.visit(method_lens.node)
+                # Replace second param in body with call to method in version v_from
+                obj_arg = method_lens.node.args.args[0]
+                method_arg = method_lens.node.args.args.pop(1)
+                rw_visitor = RewriteName(
+                    src=Name(id=method_arg.arg, ctx=Load()),
+                    target=create_obj_attr(
+                        obj=Name(id=obj_arg.arg, ctx=Load()),
+                        attr=node.name,
+                        obj_type=typeof_node(self.cls_ast),
+                    ),
+                )
+                lens_node = rw_visitor.visit(method_lens.node)
+                self.cls_ast.body.append(lens_node)
+                method_lens.node.added = True
+
         for expr in node.body:
-            expr = self.visit(expr)
+            self.visit(expr)
+
         return node
 
     def visit_Call(self, node: Call) -> Call:
@@ -37,26 +99,46 @@ class MethodLensTransformer(ast.NodeTransformer):
         method_lens = None
         # Rewrite method name to lens node name
         if isinstance(node.func, Name):
-            if isinstance(node.func.inferred_value.get_type(), type):
-                method_lens = self.env.method_lenses.get(
-                    self.v_from,
-                    v_to=self.v_target,
-                    field_name="__init__",
-                )
-                if method_lens:
-                    node.func = Name(id=method_lens.node.name, ctx=Load())
+            if isinstance(typeof_node(node.func).get_type(), type):
+                if node.func.id in self.env.method_lenses:
+                    method_lens = self.env.method_lenses[node.func.id].find_lens(
+                        self.v_from,
+                        v_to=self.v_target,
+                        field_name="__init__",
+                    )
+                    if method_lens and method_lens.node:
+                        node.func = Name(id=method_lens.node.name, ctx=Load())
 
         if isinstance(node.func, Attribute):
-            method_lens = self.env.method_lenses.get(
-                self.v_from,
-                v_to=self.v_target,
-                field_name=node.func.attr,
-            )
-            if method_lens:
-                node.func.attr = method_lens.node.name
+            obj_type = annotation_from_type_value(typeof_node(node.func.value))
+            if obj_type in self.env.method_lenses:
+                lenses = self.env.get_lenses[obj_type]
+                if node.func.attr not in [
+                    l.node.name
+                    for t in lenses.values()
+                    for w in t.values()
+                    for l in w.values()
+                    if l.node is not None
+                ]:
+                    method = next(
+                        m
+                        for m in self.env.methods[obj_type][self.v_from]
+                        if m.name == node.func.attr
+                    )
+                    method_lens = self.env.method_lenses[obj_type].find_lens(
+                        v_from=get_at(method),
+                        v_to=self.v_target,
+                        field_name=node.func.attr,
+                    )
+                    if method_lens is not None:
+                        node.func.attr = method_lens.node.name
 
         # Rewrite and add lens node to class body
-        if method_lens and not hasattr(method_lens.node, "added"):
+        if (
+            method_lens is not None
+            and method_lens.node is not None
+            and not hasattr(method_lens.node, "added")
+        ):
             # Rewrite lens body to version v_target
             method_visitor = MethodTransformer(
                 self.g, self.cls_ast, self.env, self.v_target
@@ -70,7 +152,7 @@ class MethodLensTransformer(ast.NodeTransformer):
                 target=create_obj_attr(
                     obj=Name(id=obj_arg.arg, ctx=Load()),
                     attr=method_lens.field,
-                    obj_type=self.cls_ast.inferred_value,
+                    obj_type=typeof_node(self.cls_ast),
                 ),
             )
             lens_node = rw_visitor.visit(method_lens.node)

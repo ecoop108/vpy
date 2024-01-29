@@ -8,8 +8,11 @@ from vpy.lib.utils import (
     field_to_arg,
     fields_in_function,
     graph,
+    set_typeof_node,
+    typeof_node,
 )
 import ast
+
 
 class PutLens(ast.NodeTransformer):
     """
@@ -41,7 +44,7 @@ class PutLens(ast.NodeTransformer):
     def visit_Attribute(self, node):
         if isinstance(node.value, Name) and self.__obj_arg == node.value.id:
             name_node = Name(id=node.attr, ctx=ast.Load())
-            name_node.inferred_value = node.inferred_value
+            set_typeof_node(name_node, typeof_node(node))
             node = name_node
         else:
             node.value = self.visit(node.value)

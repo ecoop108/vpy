@@ -4,7 +4,6 @@ from ast import (
     NodeTransformer,
     Pass,
 )
-from vpy.lib import lookup
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.assignment import AssignTransformer
 from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
@@ -49,18 +48,9 @@ class ClassTransformer(NodeTransformer):
 
     def visit_ClassDef(self, node: ClassDef) -> ClassDef:
         g = graph(node)
-        if lookup.base(g, node, self.v) is None:
-            node.body.append(create_init(g=g, cls_ast=node, v=self.v))
-            for w in g.parents(self.v):
-                for field in lookup.fields_lookup(g, node, w):
-                    self.env.get_lenses.put(
-                        v_from=self.v, field_name=field.name, v_to=w, lens_node=None
-                    )
-                    self.env.get_lenses.put(
-                        v_from=w, field_name=field.name, v_to=self.v, lens_node=None
-                    )
-
-        node = SelectMethodsTransformer(g=g, v=self.v).visit(node)
+        node = SelectMethodsTransformer(
+            g=g, v=self.v, cls_ast=node, env=self.env
+        ).visit(node)
         node = MethodTransformer(g=g, cls_ast=node, env=self.env, target=self.v).visit(
             node
         )
@@ -85,16 +75,20 @@ class MethodTransformer(NodeTransformer):
         self.v_target = target
 
     def visit_ClassDef(self, node):
-        for expr in list(node.body):
+        for idx, expr in enumerate(list(node.body)):
             if isinstance(expr, FunctionDef):
-                self.visit(expr)
+                expr = self.visit(expr)
+                node.body[idx] = expr
         return node
 
     def visit_FunctionDef(self, node):
         v_from = get_at(node)
         if self.v_target == v_from:
             return node
-        if self.env.bases[self.v_target] != self.env.bases[v_from]:
+        if all(
+            vb not in self.env.bases[self.cls_ast.name][self.v_target]
+            for vb in self.env.bases[self.cls_ast.name][v_from]
+        ):
             alias_visitor = AliasVisitor(
                 g=self.g, cls_ast=self.cls_ast, env=self.env, v_from=v_from
             )
@@ -131,7 +125,7 @@ class MethodTransformer(NodeTransformer):
             v_target=self.v_target,
             v_from=v_from,
         )
-        method_lens_rw.visit(node)
+        node = method_lens_rw.visit(node)
         return node
 
 
@@ -160,19 +154,19 @@ class SelectMethodsTransformer(NodeTransformer):
     Selects the class methods for version v.
     """
 
-    def __init__(self, g: Graph, v: VersionId):
+    def __init__(self, g: Graph, v: VersionId, cls_ast: ClassDef, env: Environment):
         self.g = g
         self.v = v
+        self.env = env
+        self.cls_ast = cls_ast
 
     def visit_ClassDef(self, node: ClassDef) -> ClassDef:
-        self.cls_ast = node
         self.generic_visit(node)
         return node
 
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
         if is_lens(node):
             return None
-        methods = lookup.methods_lookup(self.g, self.cls_ast, self.v)
-        if node not in methods:
+        if node not in self.env.methods[self.cls_ast.name][self.v]:
             return None
         return node

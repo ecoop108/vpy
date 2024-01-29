@@ -12,16 +12,18 @@ from ast import (
     expr,
     walk,
 )
+from operator import call
 from typing import Any
 from pyanalyze.value import UnboundMethodValue
-from vpy.lib import lookup
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName
 from vpy.lib.utils import (
+    annotation_from_type_value,
     is_field,
     is_obj_attribute,
     parse_class,
+    typeof_node,
 )
 
 
@@ -46,11 +48,10 @@ class AliasVisitor(ast.NodeVisitor):
 
     def visit_Assign(self, node: Assign) -> Any:
         def __collect_ref(alias, n: Attribute):
+            obj_type = annotation_from_type_value(typeof_node(n.value))
             if is_field(
                 n,
-                self.env.fields[n.value.inferred_value.get_type().__name__][
-                    self.v_from
-                ],
+                self.env.fields[obj_type][self.v_from],
             ):
                 self.aliases[alias] = n
                 return True
@@ -76,12 +77,11 @@ class AliasVisitor(ast.NodeVisitor):
                 found_refs = __collect_ref(node.targets[0], node.value)
         # TODO: Check if function returns a reference or an alias
         elif isinstance(node.value, Call):
-            if isinstance(
-                node.value.func.inferred_value, UnboundMethodValue
-            ) and isinstance(
-                node.value.func.inferred_value.composite.value.get_type(), type
+            call_t = typeof_node(node.value.func)
+            if isinstance(call_t, UnboundMethodValue) and isinstance(
+                call_t.composite.value.get_type(), type
             ):
-                cls = node.value.func.inferred_value.composite.value.get_type()
+                cls = call_t.composite.value.get_type()
                 import sys
 
                 mod = sys.modules[cls.__module__]
@@ -90,12 +90,23 @@ class AliasVisitor(ast.NodeVisitor):
                 # a = self.change
                 # a()
                 # TODO: Fix this
+                obj_type = annotation_from_type_value(
+                    typeof_node(
+                        node.value.func.value
+                        if isinstance(node.value.func, Attribute)
+                        else node.value.func
+                    )
+                )
                 mname = (
                     node.value.func.attr
                     if isinstance(node.value.func, Attribute)
                     else node.value.func.id
                 )
-                method = lookup._method_lookup(g, cls_ast, m=mname, v=self.v_from)
+                method = next(
+                    m
+                    for m in self.env.methods[obj_type][self.v_from]
+                    if m.name == mname
+                )
                 if method is not None:
                     visitor = AliasVisitor(g, cls_ast, self.env, self.v_from)
                     rw_visitor = RewriteName(
@@ -110,15 +121,17 @@ class AliasVisitor(ast.NodeVisitor):
                                 if e in visitor.aliases:
                                     self.aliases[node.targets[0]] = visitor.aliases[e]
                                     found_refs = True
-                                elif isinstance(e, Attribute) and is_field(
-                                    e,
-                                    self.env.fields[
-                                        e.value.inferred_value.get_type().__name__
-                                    ][self.v_from],
-                                ):
-                                    self.aliases[node.targets[0]] = e
+                                elif isinstance(e, Attribute):
+                                    e_type = annotation_from_type_value(
+                                        typeof_node(e.value)
+                                    )
+                                    if e_type in self.env.fields and is_field(
+                                        e,
+                                        self.env.fields[e_type][self.v_from],
+                                    ):
+                                        self.aliases[node.targets[0]] = e
 
-                                    found_refs = True
+                                        found_refs = True
         if (
             isinstance(node.targets[0], Attribute)
             and not found_refs

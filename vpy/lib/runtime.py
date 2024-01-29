@@ -26,7 +26,6 @@ def run(fun, v, *args, **kwargs):
     for m in inspect.getmembers(mod, inspect.isclass):
         if m[1].__module__ == mod.__name__:
             classes[m[0]] = eval_slice(mod, getattr(mod, m[0]), v)
-    print(classes)
     # rewrite function calls
     src = inspect.getsource(fun)
     f_ast = ast.parse(src)
