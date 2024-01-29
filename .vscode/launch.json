@@ -8,17 +8,37 @@
             "name": "Python: Module",
             "type": "python",
             "request": "launch",
-            "module": "vpy",
+            // "module": "examples/name.py",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/vpy"
+            },
+            "program": "examples/name.py",
+            // "args": [
+            // "-i",
+            // "examples/name.py",
+            // "-t",
+            // "init",
+            // ],
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Module with profiler",
+            "type": "python",
+            "request": "launch",
+            "module": "cProfile",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/vpy"
             },
             "args": [
+                "-o",
+                "tmp.prof",
+                "-m",
+                "vpy",
                 "-i",
                 "examples/api.py",
                 "-t",
-                "v2",
-            ],
-            "justMyCode": false
+                "v5",
+            ]
         }
     ]
 }
