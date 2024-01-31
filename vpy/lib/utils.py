@@ -70,7 +70,7 @@ def create_obj_attr(
     `obj_type` and `attr` has type `attr_type`.
     """
     obj_attr = Attribute(value=obj, attr=attr, ctx=ctx)
-    set_typeof_node(obj_attr, obj_type)
+    set_typeof_node(obj_attr.value, obj_type)
     set_typeof_node(obj_attr, attr_type)
     return obj_attr
 

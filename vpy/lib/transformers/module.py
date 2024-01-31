@@ -11,7 +11,7 @@ from vpy.typechecker.checker import check_cls, check_module
 
 class ModuleStrictTransformer(ast.NodeTransformer):
     """
-    Project a strict slice of a version of this module.
+    Strict projection of a version of this module.
     """
 
     def __init__(self, v: VersionId):
@@ -24,7 +24,7 @@ class ModuleStrictTransformer(ast.NodeTransformer):
 
 class ModuleTransformer(ast.NodeTransformer):
     """
-    Project a slice of a version of this module.
+    Project a version of this module.
     """
 
     def __init__(self, v: VersionId):
@@ -32,7 +32,5 @@ class ModuleTransformer(ast.NodeTransformer):
 
     def visit_Module(self, node):
         env = get_module_environment(node)
-        for idx, cls in enumerate(node.body):
-            if isinstance(cls, ClassDef):
-                node.body[idx] = ClassTransformer(v=self.v, env=env).visit(cls)
+        node = ClassTransformer(v=self.v, env=env).visit(node)
         return node

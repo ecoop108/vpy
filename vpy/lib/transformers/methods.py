@@ -39,6 +39,7 @@ class MethodLensTransformer(ast.NodeTransformer):
 
         if is_lens(node):
             return node
+
         method_lens = self.env.method_lenses[self.cls_ast.name].find_lens(
             self.v_target, self.v_from, node.name
         )
@@ -108,6 +109,7 @@ class MethodLensTransformer(ast.NodeTransformer):
                     )
                     if method_lens and method_lens.node:
                         node.func = Name(id=method_lens.node.name, ctx=Load())
+                        node.func.inferred_value = method_lens.node.inferred_value
 
         if isinstance(node.func, Attribute):
             obj_type = annotation_from_type_value(typeof_node(node.func.value))

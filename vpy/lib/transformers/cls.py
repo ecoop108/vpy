@@ -74,13 +74,6 @@ class MethodTransformer(NodeTransformer):
         self.env = env
         self.v_target = target
 
-    def visit_ClassDef(self, node):
-        for idx, expr in enumerate(list(node.body)):
-            if isinstance(expr, FunctionDef):
-                expr = self.visit(expr)
-                node.body[idx] = expr
-        return node
-
     def visit_FunctionDef(self, node):
         v_from = get_at(node)
         if self.v_target == v_from:
@@ -137,10 +130,6 @@ class SelectMethodsStrictTransformer(NodeTransformer):
     def __init__(self, v: VersionId):
         self.v = v
 
-    def visit_ClassDef(self, node: ClassDef) -> ClassDef:
-        self.generic_visit(node)
-        return node
-
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
         if is_lens(node):
             return None
@@ -165,8 +154,6 @@ class SelectMethodsTransformer(NodeTransformer):
         return node
 
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
-        if is_lens(node):
-            return None
         if node not in self.env.methods[self.cls_ast.name][self.v]:
             return None
         return node
