@@ -1,8 +1,6 @@
-from _ast import FunctionDef
 import ast
 from ast import ClassDef, FunctionDef, NodeVisitor
-from distutils.version import Version
-from vpy.lib.lib_types import Field, Field, Graph, Lenses, VersionId
+from vpy.lib.lib_types import Field, Graph, Lenses, VersionId
 from vpy.lib.utils import (
     fields_in_function,
     get_decorator,
@@ -205,9 +203,10 @@ def __field_lens_lookup(
     """
     fields_v = fields_lookup(g, cls_ast, v)
     result: dict[Field, FunctionDef | None] = {}
+    bases_v = base_versions(g, cls_ast, t)
     bases_t = base_versions(g, cls_ast, t)
     for field in fields_v:
-        if v in bases_t:
+        if bases_v <= bases_t:
             result[field] = None
         else:
             path = __field_lens_path_lookup(g, v, t, cls_ast, field.name)
