@@ -14,6 +14,7 @@ from typing import Any, Callable, ClassVar, Optional, Sequence, Tuple, Union
 
 import asynq
 import qcore
+from regex import F
 
 from .annotated_types import EnumName
 from .annotations import Context, type_from_annotations, type_from_runtime
@@ -572,6 +573,15 @@ def _get_attribute_from_mro(
                 except Exception:
                     pass
                 else:
+                    try:
+                        f = [
+                            m
+                            for m in ctx.env.methods[typ.__name__][ctx.version]
+                            if m.name == ctx.attr
+                        ][0]
+                        val = KnownValue()
+                    except Exception:
+                        val = AnyValue(AnySource.inference)
                     try:
                         val = KnownValue(getattr(typ, ctx.attr))
                     except Exception:

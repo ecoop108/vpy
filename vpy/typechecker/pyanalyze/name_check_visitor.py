@@ -57,6 +57,7 @@ import qcore
 import typeshed_client
 from typing_extensions import Annotated, Protocol, get_args, get_origin
 
+
 if TYPE_CHECKING:
     from vpy.lib.lib_types import Environment, VersionId
 
@@ -406,6 +407,8 @@ class _AttrContext(CheckerAttrContext):
         skip_unwrap: bool = False,
         prefer_typeshed: bool = False,
         record_reads: bool = True,
+        version,#: VersionId
+        env, # :Environment
     ) -> None:
         super().__init__(
             root_composite,
@@ -420,7 +423,9 @@ class _AttrContext(CheckerAttrContext):
         self.visitor = visitor
         self.ignore_none = ignore_none
         self.record_reads = record_reads
-
+        self.version = version
+        self.env = env
+    #TODO: Add context version here
     def record_usage(self, obj: object, val: Value) -> None:
         self.visitor._maybe_record_usage(obj, self.attr, val)
 
@@ -1260,6 +1265,10 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         self._has_used_any_match = False
         self._should_exclude_any = False
         self._fill_method_cache()
+
+        # set versioned environment
+        from vpy.lib.utils import get_module_environment
+        self.env = get_module_environment(self.tree)
 
     def get_local_return_value(self, sig: MaybeSignature) -> Optional[Value]:
         val, saved_sig = self._argspec_to_retval.get(id(sig), (None, None))
@@ -5245,6 +5254,8 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             node=node,
             ignore_none=ignore_none,
             prefer_typeshed=prefer_typeshed,
+            version=self.version,
+            env=self.env
         )
         result = attributes.get_attribute(ctx)
         if result is UNINITIALIZED_VALUE and use_fallback and node is not None:
