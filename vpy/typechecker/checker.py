@@ -4,8 +4,8 @@ from types import ModuleType
 from networkx import find_cycle
 from networkx.exception import NetworkXNoCycle
 from vpy.lib.lib_types import Environment, Graph
+from vpy.lib.lookup import _method_lookup
 from vpy.lib.utils import (
-    create_init,
     fields_in_function,
     get_at,
     get_module_environment,
@@ -45,8 +45,9 @@ from vpy.lib.utils import (
 
 
 def check_module(module: ModuleType) -> tuple[bool, list[str]]:
-    mod_ast = parse_module(module)
+    mod_ast, visitor = parse_module(module)
     mod_env = get_module_environment(mod_ast)
+    mod_env.visitor = visitor
     for node in mod_ast.body:
         if isinstance(node, ClassDef):
             return check_cls(module, node, mod_env)
@@ -62,6 +63,7 @@ def check_cls(
         check_version_graph,
         check_methods,
         check_missing_field_lenses,
+        check_missing_method_lenses,
     ]:
         status, err = check(g, cls_ast, env)
         if not status:
@@ -105,7 +107,6 @@ def check_missing_field_lenses(
             for l in w.values()
             if l.node is not None
         }
-        # l for w in lenses[v.name].values() for l in w.values()]
         for m in methods.union(lenses_methods):
             if isinstance(m, tuple):
                 assert False
@@ -130,3 +131,44 @@ def check_missing_field_lenses(
 
 
 # TODO: Check missing method lenses. If type is different? If signature is different?
+def check_missing_method_lenses(
+    g: Graph, cls_ast: ClassDef, env: Environment
+) -> tuple[bool, list[str]]:
+    lenses = env.method_lenses[cls_ast.name]
+    for v in g.all():
+        methods = env.methods[cls_ast.name][v.name]
+        #     lenses_methods = {
+        #         l.node
+        #         for w in lenses[v.name].values()
+        #         for l in w.values()
+        #         if l.node is not None
+        #     }
+        #     # l for w in lenses[v.name].values() for l in w.values()]
+        for m in methods:
+            mdef = _method_lookup(
+                Graph(graph={v.name: v}),
+                cls_ast,
+                m.name,
+                v.name,
+            )
+            if (
+                mdef is not None
+                and get_at(m) != get_at(mdef)
+                and env.visitor.get_local_return_value(
+                    env.visitor.signature_from_value(m.inferred_value)
+                )
+                != env.visitor.get_local_return_value(
+                    env.visitor.signature_from_value(mdef.inferred_value)
+                )
+            ):  # and method signatures are different (subtypes?) :
+                if (
+                    lenses.find_lens(v_from=v.name, v_to=get_at(m), field_name=m.name)
+                    is None
+                ):
+                    return (
+                        False,
+                        [
+                            f"""Missing method lens between versions {v.name} and {get_at(m)} for method {m.name}"""
+                        ],
+                    )
+    return (True, [])

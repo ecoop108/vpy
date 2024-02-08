@@ -12,9 +12,8 @@ from ast import (
     expr,
     walk,
 )
-from operator import call
 from typing import Any
-from pyanalyze.value import UnboundMethodValue
+from vpy.typechecker.pyanalyze.value import UnboundMethodValue
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName

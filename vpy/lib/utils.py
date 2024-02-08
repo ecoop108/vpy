@@ -14,10 +14,18 @@ import ast
 from copy import deepcopy
 import inspect
 from types import ModuleType
-from typing import Protocol, Type, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Type, runtime_checkable
 
-from pyanalyze.ast_annotator import annotate_code
-from pyanalyze.value import AnySource, AnyValue, TypedValue, Value, KnownValue
+from vpy.typechecker.pyanalyze.value import (
+    AnySource,
+    AnyValue,
+    TypedValue,
+    Value,
+    KnownValue,
+)
+
+if TYPE_CHECKING:
+    from vpy.typechecker.pyanalyze.name_check_visitor import NameCheckVisitor
 from vpy.lib import lookup
 from vpy.lib.lib_types import Environment, Field, Graph, Lenses, Version, VersionId
 import uuid
@@ -163,14 +171,16 @@ def get_module_environment(mod_ast: Module):
     return env
 
 
-def parse_module(module: ModuleType) -> Module:
+def parse_module(module: ModuleType) -> tuple[Module, "NameCheckVisitor"]:
+    from vpy.typechecker.pyanalyze.ast_annotator import annotate_code
+
     src = inspect.getsource(module)
-    tree = annotate_code(src)
-    return tree
+    tree, visitor = annotate_code(src)
+    return tree, visitor
 
 
 def parse_class(module: ModuleType, cls: Type) -> tuple[ClassDef, Graph]:
-    tree = parse_module(module)
+    tree, _ = parse_module(module)
     cls_ast = [
         node
         for node in tree.body

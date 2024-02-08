@@ -10,7 +10,7 @@ from typing import Type
 
 from vpy.lib.lib_types import Field, VersionId
 from vpy.lib.utils import get_at, is_obj_attribute, typeof_node, is_field
-from pyanalyze.value import AnySource, AnyValue, TypedValue
+from vpy.typechecker.pyanalyze.value import AnySource, AnyValue, TypedValue
 
 
 class ClassFieldCollector(NodeVisitor):

@@ -1,4 +1,4 @@
-from pyanalyze.ast_annotator import annotate_code
+from vpy.typechecker.pyanalyze.ast_annotator import annotate_code
 from vpy.decorators import at, get, version
 from vpy.lib.lib_types import VersionId
 import pytest

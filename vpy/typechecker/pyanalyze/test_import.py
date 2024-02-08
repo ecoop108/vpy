@@ -1,0 +1,93 @@
+# static analysis: ignore
+from .implementation import assert_is_value
+from .test_name_check_visitor import TestNameCheckVisitorBase
+from .test_node_visitor import assert_passes
+from .value import KnownValue
+
+
+class TestImport(TestNameCheckVisitorBase):
+    @assert_passes()
+    def test_import(self):
+        import vpy.typechecker.pyanalyze as P
+
+        def capybara() -> None:
+            import vpy.typechecker.pyanalyze as pyanalyze
+            import vpy.typechecker.pyanalyze as py
+            import vpy.typechecker.pyanalyze.extensions as E
+
+            assert_is_value(pyanalyze, KnownValue(P))
+            assert_is_value(py, KnownValue(P))
+            assert_is_value(E, KnownValue(P.extensions))
+
+    @assert_passes()
+    def test_import_from(self):
+        def capybara():
+            import vpy.typechecker.pyanalyze as P
+
+            def capybara():
+                from vpy.typechecker.pyanalyze import extensions
+                from vpy.typechecker.pyanalyze.extensions import assert_error
+
+                assert_is_value(extensions, KnownValue(P.extensions))
+                assert_is_value(assert_error, KnownValue(P.extensions.assert_error))
+
+    def test_import_star(self):
+        self.assert_passes(
+            """
+            import vpy.typechecker.pyanalyze as P
+
+            if False:
+                from vpy.typechecker.pyanalyze import *
+
+                assert_is_value(extensions, KnownValue(P.extensions))
+                not_a_name  # E: undefined_name
+            """
+        )
+
+
+class TestDisallowedImport(TestNameCheckVisitorBase):
+    @assert_passes()
+    def test_top_level(self):
+        import getopt  # E: disallowed_import
+        import xml.etree.ElementTree  # E: disallowed_import
+
+        from getopt import GetoptError  # E: disallowed_import
+
+        print(getopt, GetoptError, xml)  # shut up flake8
+
+        def capybara():
+            import getopt  # E: disallowed_import
+            from getopt import GetoptError  # E: disallowed_import
+            import xml.etree.ElementTree  # E: disallowed_import
+
+            print(getopt, GetoptError, xml)
+
+    @assert_passes()
+    def test_nested(self):
+        import email.quoprimime  # E: disallowed_import
+        import email.base64mime  # ok
+        from email.quoprimime import unquote  # E: disallowed_import
+        from xml.etree import ElementTree  # E: disallowed_import
+
+        print(email, unquote, ElementTree)
+
+        def capybara():
+            import email.quoprimime  # E: disallowed_import
+            import email.base64mime  # ok
+            from email.quoprimime import unquote  # E: disallowed_import
+            from xml.etree import ElementTree  # E: disallowed_import
+
+            print(email, unquote, ElementTree)
+
+    @assert_passes()
+    def test_import_from(self):
+        from email import quoprimime  # E: disallowed_import
+        from email import base64mime  # ok
+
+        print(quoprimime, base64mime)
+
+        def capybara():
+            from email import quoprimime  # E: disallowed_import
+            from email import base64mime  # ok
+
+            print(quoprimime, base64mime)

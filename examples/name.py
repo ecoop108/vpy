@@ -6,7 +6,7 @@ from vpy.decorators import at, get, run, version
 
 @version(name="init")
 @version(name="bugfix", replaces=["init"])
-@version(name="full", upgrades=["init"])
+@version(name="full", replaces=["init"])
 class Name:
     @at("init")
     def __init__(self, first: str, last: str):
@@ -65,22 +65,22 @@ class Name:
     def w(self) -> bool:
         return self.m() == 0
 
-    @get("init", "full", "m")
-    def lens_m(self, f: Callable[[], int]) -> bool:
-        return f() == 0
+    # @get("init", "full", "m")
+    # def lens_m(self, f: Callable[[], int]) -> bool:
+    #     return f() == 0
 
-    @get("full", "init", "m")
-    def lens_m_v2(self, f: Callable[[], bool]) -> int:
-        return 0 if f() else 1
-
-
-@run("full")
-def main():
-    obj = Name("Rolling Stones")
-    print(obj.get_full_name())
-    obj.set_last("Stoned")
-    print(obj.get_full_name())
+    # @get("full", "init", "m")
+    # def lens_m_v2(self, f: Callable[[], bool]) -> int:
+    #     return 0 if f() else 1
 
 
-if __name__ == "__main__":
-    main()
+# @run("full")
+# def main():
+#     obj = Name("Rolling Stones")
+#     print(obj.get_full_name())
+#     obj.set_last("Stoned")
+#     print(obj.get_full_name())
+
+
+# if __name__ == "__main__":
+#     main()
