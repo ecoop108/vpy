@@ -9,7 +9,7 @@ allow-direct-references = true
 [project]
 name = "vpy"
 version = "0.1"
-dependencies = ["networkx", "asynq", "qcore", "ast_decompiler", "typeshed_client", "typing_extensions", "aenum", "codemod", "myst"-parser, "usort"]
+dependencies = ["networkx", "asynq", "qcore", "ast_decompiler", "typeshed_client", "typing_extensions", "aenum", "codemod", "myst-parser", "usort"]
 requires-python = ">= 3.11"
 
 [project.scripts]
