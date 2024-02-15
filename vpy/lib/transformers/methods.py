@@ -57,14 +57,17 @@ class MethodLensTransformer(ast.NodeTransformer):
 
             if mdef is not None and mdef not in self.cls_ast.body:
                 mdef = deepcopy(mdef)
-                args = node.args.args[1:]
                 self_attr = create_obj_attr(
                     obj=Name(id="self", ctx=Load()),
                     attr=method_lens.node.name,
                     obj_type=typeof_node(self.cls_ast),
                     attr_type=typeof_node(method_lens.node),
                 )
-                method_lens_call = Call(func=self_attr, args=args, keywords=[])
+                args = [ast.arg(arg=a.arg) for a in mdef.args.args[1:]]
+                kw_args = [
+                    keyword(arg=kw, value=Name(id=kw)) for kw in mdef.args.kwonlyargs
+                ]
+                method_lens_call = Call(func=self_attr, args=args, keywords=kw_args)
                 mdef.body = [Return(value=method_lens_call)]
                 self.cls_ast.body.append(mdef)
 
