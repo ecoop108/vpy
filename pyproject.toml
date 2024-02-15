@@ -10,7 +10,15 @@ allow-direct-references = true
 name = "vpy"
 version = "0.1"
 dependencies = [
-  "networkx"
+  "networkx", "asynq",
+"qcore",
+"ast_decompiler",
+"typeshed_client",
+"typing_extensions",
+"aenum",
+"codemod",
+"myst"-parser,
+"usort"
 ]
 requires-python = ">= 3.11"
 
