@@ -8,17 +8,32 @@
             "name": "Python: Module",
             "type": "python",
             "request": "launch",
-            // "module": "examples/name.py",
+            "module": "vpy",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/vpy"
             },
-            "program": "examples/name.py",
-            // "args": [
-            // "-i",
-            // "examples/name.py",
-            // "-t",
-            // "init",
-            // ],
+            "args": [
+                "-i",
+                "examples/name.py",
+                "-t",
+                "init",
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Current file",
+            "type": "python",
+            "request": "launch",
+            "module": "vpy",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/vpy"
+            },
+            "args": [
+                "-i",
+                "examples/tchecker.py",
+                "-t",
+                "init",
+            ],
             "justMyCode": false
         },
         {
