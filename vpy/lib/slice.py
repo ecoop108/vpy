@@ -16,7 +16,7 @@ def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
     status, err = check_module(module)
     if not status:
         raise Exception(err)
-    mod_ast = parse_module(module)
+    mod_ast, _ = parse_module(module)
     sl_mod = ModuleTransformer(v).visit(mod_ast)
 
     sl_cls = [
