@@ -5,12 +5,14 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+
 [project]
 name = "vpy"
 version = "0.1"
 dependencies = [
-  "networkx", "pyanalyze@git+https://github.com/ecoop108/pyanalyze-vpy.git"
+  "networkx"
 ]
 requires-python = ">= 3.11"
+
 [project.scripts]
 vpy = "vpy.cli:cli_main"

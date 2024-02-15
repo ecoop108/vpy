@@ -8,7 +8,6 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import NamedTuple, NewType
 import networkx as nx
-from pyanalyze.value import Value
 
 VersionId = NewType("VersionId", str)
 
@@ -53,6 +52,8 @@ class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
 
 
 class Field(NamedTuple):
+    from vpy.typechecker.pyanalyze.value import Value
+
     name: str
     type: Value
 

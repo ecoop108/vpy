@@ -49,13 +49,19 @@ def target(file, version: VersionId, strict=False):
         exit("Error reading module.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    mod_ast, _ = parse_module(module)
     if strict:
-        mod_ast = ModuleStrictTransformer(version).visit(parse_module(module))
+        mod_ast = ModuleStrictTransformer(version).visit(mod_ast)
     else:
         status, err = check_module(module)
         if not status:
-            raise Exception(err)
-        mod_ast = ModuleTransformer(version).visit(parse_module(module))
+            import sys
+
+            for error in err:
+                print(error, file=sys.stderr)
+            exit(-1)
+            # raise Exception(err)
+        mod_ast = ModuleTransformer(version).visit(mod_ast)
     slices = [ast.unparse(ast.fix_missing_locations(mod_ast))]
     print("\n".join(slices))
 

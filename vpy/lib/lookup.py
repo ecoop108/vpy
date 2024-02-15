@@ -203,7 +203,7 @@ def __field_lens_lookup(
     """
     fields_v = fields_lookup(g, cls_ast, v)
     result: dict[Field, FunctionDef | None] = {}
-    bases_v = base_versions(g, cls_ast, t)
+    bases_v = base_versions(g, cls_ast, v)
     bases_t = base_versions(g, cls_ast, t)
     for field in fields_v:
         if bases_v <= bases_t:
