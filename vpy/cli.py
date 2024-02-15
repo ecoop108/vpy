@@ -55,7 +55,12 @@ def target(file, version: VersionId, strict=False):
     else:
         status, err = check_module(module)
         if not status:
-            raise Exception(err)
+            import sys
+
+            for error in err:
+                print(error, file=sys.stderr)
+            exit(-1)
+            # raise Exception(err)
         mod_ast = ModuleTransformer(version).visit(mod_ast)
     slices = [ast.unparse(ast.fix_missing_locations(mod_ast))]
     print("\n".join(slices))

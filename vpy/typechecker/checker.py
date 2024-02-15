@@ -1,4 +1,4 @@
-from ast import ClassDef, fix_missing_locations
+from ast import Attribute, Call, ClassDef, fix_missing_locations, walk
 from types import ModuleType
 
 from networkx import find_cycle
@@ -6,11 +6,13 @@ from networkx.exception import NetworkXNoCycle
 from vpy.lib.lib_types import Environment, Graph
 from vpy.lib.lookup import _method_lookup
 from vpy.lib.utils import (
+    annotation_from_type_value,
     fields_in_function,
     get_at,
     get_module_environment,
     graph,
     parse_module,
+    typeof_node,
 )
 
 
@@ -63,6 +65,7 @@ def check_cls(
         check_version_graph,
         check_methods,
         check_missing_field_lenses,
+        check_method_lenses,
         check_missing_method_lenses,
     ]:
         status, err = check(g, cls_ast, env)
@@ -130,6 +133,53 @@ def check_missing_field_lenses(
     return (True, [])
 
 
+def check_method_lenses(g: Graph, cls_ast: ClassDef, env: Environment):
+    lenses = env.method_lenses[cls_ast.name]
+    for v, v_lenses in lenses.items():
+        for method, m_lenses in v_lenses.items():
+            for t, lens in m_lenses.items():
+                lens_node = lens.node
+                if lens_node is None:
+                    continue
+                m_v = _method_lookup(
+                    Graph(graph={v: g.find_version(v)}),
+                    cls_ast,
+                    method,
+                    v,
+                )
+                m_t = _method_lookup(
+                    Graph(graph={t: g.find_version(t)}),
+                    cls_ast,
+                    method,
+                    t,
+                )
+                if m_v is not None and m_t is not None:
+                    lens_node.args.args[0].arg == "self"
+                    lens_node.args.args[1].arg == "f"
+                    lens_sig = env.visitor.visit(lens_node).signature
+                    m_v_sig = env.visitor.visit(m_v).signature
+                    if (
+                        list(lens_sig.parameters.items())[2:]
+                        != list(m_v_sig.parameters.items())[1:]
+                    ):
+                        return (
+                            False,
+                            [
+                                f"""Wrong signature in lens of method {method} from version {v} to {t}. The signature must match that of {method} in version {v}:
+def {lens_node.name}(self, f: Callable, {','.join(p.name for p in list(m_v_sig.parameters.values())[1:])}) -> {str(m_v_sig.return_value)}"""
+                            ],
+                        )
+                    if lens_sig.return_value != m_v_sig.return_value:
+                        return (
+                            False,
+                            [
+                                f"""Wrong signature in lens of method {method} from version {v} to {t}. The signature must match that of {method} in version {v}:
+def {lens_node.name}(self, f: Callable, {','.join(p.name for p in list(m_v_sig.parameters.values())[1:])}) -> {str(m_v_sig.return_value)}"""
+                            ],
+                        )
+    return (True, [])
+
+
 # TODO: Check missing method lenses. If type is different? If signature is different?
 def check_missing_method_lenses(
     g: Graph, cls_ast: ClassDef, env: Environment
@@ -138,6 +188,7 @@ def check_missing_method_lenses(
     for v in g.all():
         methods = env.methods[cls_ast.name][v.name]
         for m in methods:
+
             mdef = _method_lookup(
                 Graph(graph={v.name: v}),
                 cls_ast,
@@ -161,20 +212,59 @@ def check_missing_method_lenses(
                             f"""Missing return type annotation for method {m.name} in version {get_at(m)}"""
                         ],
                     )
-                m_type_val = env.visitor.visit(m)
-                mdef_type_val = env.visitor.visit(mdef)
+                m_sig = env.visitor.visit(m).signature
+                mdef_sig = env.visitor.visit(mdef).signature
                 if (
-                    m_type_val.signature.return_value
-                    != mdef_type_val.signature.return_value
-                ) and (
                     lenses.find_lens(v_from=v.name, v_to=get_at(m), field_name=m.name)
                     is None
                 ):
-                    return (
-                        False,
-                        [
-                            f"""Missing method lens between versions {v.name} and {get_at(m)} for method {m.name}"""
-                        ],
-                    )
-
+                    # TODO: Naive approach to compare signatures (they must be the same).
+                    # Refine with subtypes, optional arguments, etc.
+                    if (
+                        (len(m_sig.parameters) != len(mdef_sig.parameters))
+                        or (m_sig != mdef_sig)
+                        or (m_sig.return_value != mdef_sig.return_value)
+                    ):
+                        return (
+                            False,
+                            [
+                                f"""Missing method lens between versions {v.name} and {get_at(m)} for method {m.name}"""
+                            ],
+                        )
+            elif get_at(m) != v.name:
+                for node in walk(m):
+                    if isinstance(node, Call) and isinstance(node.func, Attribute):
+                        obj_type = annotation_from_type_value(
+                            typeof_node(node.func.value)
+                        )
+                        if obj_type == cls_ast.name:
+                            callee_t = [
+                                m
+                                for m in env.methods[cls_ast.name][get_at(m)]
+                                if m.name == node.func.attr
+                            ][0]
+                            callee_t_sig = env.visitor.visit(callee_t).signature
+                            m_sig = env.visitor.visit(m).signature
+                            if (
+                                lenses.find_lens(
+                                    v_from=get_at(m),
+                                    v_to=get_at(callee_t),
+                                    field_name=callee_t.name,
+                                )
+                                is None
+                            ):
+                                if get_at(m) != get_at(callee_t) and (
+                                    (
+                                        len(m_sig.parameters)
+                                        != len(callee_t_sig.parameters)
+                                    )
+                                    or (m_sig != callee_t_sig)
+                                    or (m_sig.return_value != mdef_sig.return_value)
+                                ):
+                                    return (
+                                        False,
+                                        [
+                                            f"""Missing method lens between versions {get_at(m)} and {get_at(callee_t)} for method {callee_t.name}"""
+                                        ],
+                                    )
     return (True, [])

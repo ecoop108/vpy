@@ -407,8 +407,8 @@ class _AttrContext(CheckerAttrContext):
         skip_unwrap: bool = False,
         prefer_typeshed: bool = False,
         record_reads: bool = True,
-        version,#: VersionId
-        env, # :Environment
+        version,  #: VersionId
+        env,  # :Environment
     ) -> None:
         super().__init__(
             root_composite,
@@ -425,7 +425,8 @@ class _AttrContext(CheckerAttrContext):
         self.record_reads = record_reads
         self.version = version
         self.env = env
-    #TODO: Add context version here
+
+    # TODO: Add context version here
     def record_usage(self, obj: object, val: Value) -> None:
         self.visitor._maybe_record_usage(obj, self.attr, val)
 
@@ -1268,7 +1269,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
         # set versioned environment
         from vpy.lib.utils import get_module_environment
-        self.env = get_module_environment(self.tree)
+
+        if self.tree is not None:
+            self.env = get_module_environment(self.tree)
 
     def get_local_return_value(self, sig: MaybeSignature) -> Optional[Value]:
         val, saved_sig = self._argspec_to_retval.get(id(sig), (None, None))
@@ -5254,8 +5257,8 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             node=node,
             ignore_none=ignore_none,
             prefer_typeshed=prefer_typeshed,
-            version=self.version,
-            env=self.env
+            version=None if not hasattr(self, "version") else self.version,
+            env=self.env,
         )
         result = attributes.get_attribute(ctx)
         if result is UNINITIALIZED_VALUE and use_fallback and node is not None:

@@ -138,23 +138,22 @@ class MethodLensTransformer(ast.NodeTransformer):
                         for m in self.env.methods[obj_type][self.v_from]
                         if m.name == node.func.attr
                     )
-                    # method_v_target = next(
-                    #     (
-                    #         m
-                    #         for m in self.env.methods[obj_type][self.v_target]
-                    #         if m.name == node.func.attr
-                    #     ),
-                    #     None,
-                    # )
-                    # if method_v_target is not None and get_at(method_v_from) != get_at(
-                    #     method_v_target
-                    # ):
+                    method_v_target = next(
+                        (
+                            m
+                            for m in self.env.methods[obj_type][self.v_target]
+                            if m.name == node.func.attr
+                        ),
+                        None,
+                    )
                     method_lens = self.env.method_lenses[obj_type].find_lens(
-                        v_from=get_at(method_v_from),
+                        v_from=self.v_from,
                         v_to=self.v_target,
                         field_name=node.func.attr,
                     )
                     # TODO: Type checker should ensure this is not None
+                    if get_at(method_v_from) == self.v_from:
+                        node.func.attr = f"__{self.v_from}_{method_v_from.name}"
                     if method_lens is not None:
                         node.func.attr = method_lens.node.name
 

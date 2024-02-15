@@ -1,4 +1,4 @@
-# This file covers the examples shown in the paper.
+# This file covers (most of) the examples shown in the paper.
 
 from typing import Callable
 from vpy.decorators import at, get, run, version
@@ -50,7 +50,8 @@ class Name:
         return f"{self.first} {self.last}"
 
     @at("init")
-    def m(self) -> bool:
+    def m(self, x) -> bool:
+        x = x + 1
         return True
 
     @at("full")
@@ -66,7 +67,7 @@ class Name:
         return self.m() == 0
 
     @get("init", "full", "m")
-    def lens_m(self, f: Callable[[], int]) -> bool:
+    def lens_m(self, f: Callable[[], int], x) -> bool:
         return f() == 0
 
     # @get("full", "init", "m")
