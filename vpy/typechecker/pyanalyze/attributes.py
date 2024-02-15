@@ -14,7 +14,6 @@ from typing import Any, Callable, ClassVar, Optional, Sequence, Tuple, Union
 
 import asynq
 import qcore
-from regex import F
 
 from .annotated_types import EnumName
 from .annotations import Context, type_from_annotations, type_from_runtime
