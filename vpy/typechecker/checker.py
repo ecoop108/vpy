@@ -137,13 +137,6 @@ def check_missing_method_lenses(
     lenses = env.method_lenses[cls_ast.name]
     for v in g.all():
         methods = env.methods[cls_ast.name][v.name]
-        #     lenses_methods = {
-        #         l.node
-        #         for w in lenses[v.name].values()
-        #         for l in w.values()
-        #         if l.node is not None
-        #     }
-        #     # l for w in lenses[v.name].values() for l in w.values()]
         for m in methods:
             mdef = _method_lookup(
                 Graph(graph={v.name: v}),
@@ -151,17 +144,29 @@ def check_missing_method_lenses(
                 m.name,
                 v.name,
             )
-            if (
-                mdef is not None
-                and get_at(m) != get_at(mdef)
-                and env.visitor.get_local_return_value(
-                    env.visitor.signature_from_value(m.inferred_value)
-                )
-                != env.visitor.get_local_return_value(
-                    env.visitor.signature_from_value(mdef.inferred_value)
-                )
-            ):  # and method signatures are different (subtypes?) :
+            if mdef is not None and get_at(m) != get_at(mdef):
+                # TODO: Pyanalyze does not store the (inferred) return type of functions in the AST node.
+                # For now, let's make return annotation mandatory (pyanalyze can type check the body to match the annotation).
+                if mdef.returns is None:
+                    return (
+                        False,
+                        [
+                            f"""Missing return type annotation for method {mdef.name} in version {get_at(mdef)}"""
+                        ],
+                    )
+                if m.returns is None:
+                    return (
+                        False,
+                        [
+                            f"""Missing return type annotation for method {m.name} in version {get_at(m)}"""
+                        ],
+                    )
+                m_type_val = env.visitor.visit(m)
+                mdef_type_val = env.visitor.visit(mdef)
                 if (
+                    m_type_val.signature.return_value
+                    != mdef_type_val.signature.return_value
+                ) and (
                     lenses.find_lens(v_from=v.name, v_to=get_at(m), field_name=m.name)
                     is None
                 ):
@@ -171,4 +176,5 @@ def check_missing_method_lenses(
                             f"""Missing method lens between versions {v.name} and {get_at(m)} for method {m.name}"""
                         ],
                     )
+
     return (True, [])

@@ -18,11 +18,11 @@ class Name:
         self.fullname = full
 
     @at("init")
-    def display(self):
+    def display(self) -> str:
         return f"{self.first}, {self.last}"
 
     @at("bugfix")
-    def display(self):
+    def display(self) -> str:
         return f"{self.last}, {self.first}"
 
     @at("init")
@@ -65,9 +65,9 @@ class Name:
     def w(self) -> bool:
         return self.m() == 0
 
-    # @get("init", "full", "m")
-    # def lens_m(self, f: Callable[[], int]) -> bool:
-    #     return f() == 0
+    @get("init", "full", "m")
+    def lens_m(self, f: Callable[[], int]) -> bool:
+        return f() == 0
 
     # @get("full", "init", "m")
     # def lens_m_v2(self, f: Callable[[], bool]) -> int:
