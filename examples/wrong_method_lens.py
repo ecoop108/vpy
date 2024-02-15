@@ -1,7 +1,7 @@
 # This example shows the detection of wrongly-typed method lenses.
 # To run the type checker, open the terminal pane in the editor and run:
 
-# vpy -i examples/wrong_method_lens.py -t init
+# vpy -i wrong_method_lens.py -t init
 
 from vpy.decorators import at, get, version
 

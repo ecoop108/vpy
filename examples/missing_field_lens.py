@@ -1,7 +1,7 @@
 # This example shows the detection of missing field lenses.
 # To run the type checker, open the terminal pane in the editor and run:
 
-# vpy -i examples/missing_field_lens.py -t init
+# vpy -i missing_field_lens.py -t init
 
 from vpy.decorators import at, get, version
 
