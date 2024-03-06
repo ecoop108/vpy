@@ -6,8 +6,12 @@ from ast import Attribute, ClassDef, Constant, FunctionDef, List, keyword, expr
 from collections import UserDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import NamedTuple, NewType
+from typing import TYPE_CHECKING, NamedTuple, NewType
 import networkx as nx
+
+if TYPE_CHECKING:
+    from vpy.typechecker.pyanalyze.value import Value
+
 
 VersionId = NewType("VersionId", str)
 
@@ -52,10 +56,9 @@ class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
 
 
 class Field(NamedTuple):
-    from vpy.typechecker.pyanalyze.value import Value
 
     name: str
-    type: Value
+    type: "Value"
 
 
 class FieldReference(NamedTuple):

@@ -57,9 +57,7 @@ import qcore
 import typeshed_client
 from typing_extensions import Annotated, Protocol, get_args, get_origin
 
-
-if TYPE_CHECKING:
-    from vpy.lib.lib_types import Environment, VersionId
+from vpy.lib.lib_types import Environment, VersionId
 
 from .annotated_types import Gt, Ge, Le, Lt
 
@@ -407,7 +405,7 @@ class _AttrContext(CheckerAttrContext):
         skip_unwrap: bool = False,
         prefer_typeshed: bool = False,
         record_reads: bool = True,
-        version,  #: VersionId
+        version: VersionId | None = None,
         env,  # :Environment
     ) -> None:
         super().__init__(
@@ -428,11 +426,11 @@ class _AttrContext(CheckerAttrContext):
 
     # TODO: Add context version here
     def record_usage(self, obj: object, val: Value) -> None:
-        self.visitor._maybe_record_usage(obj, self.attr, val)
+        self.visitor._maybe_record_usage(obj, self.version, self.attr, val)
 
     def record_attr_read(self, obj: type) -> None:
         if self.record_reads and self.node is not None:
-            self.visitor._record_type_attr_read(obj, self.attr, self.node)
+            self.visitor._record_type_attr_read(obj, self.version, self.attr, self.node)
 
     def get_property_type_from_argspec(self, obj: property) -> Value:
         return self.visitor.resolve_property(obj, self.root_composite, self.node)
@@ -684,7 +682,7 @@ class ClassAttributeChecker:
             lambda: collections.defaultdict(set)
         )
         # Used for attribute value inference
-        self.attribute_values = collections.defaultdict(dict)
+        self.attribute_values = collections.defaultdict(lambda: collections.defaultdict(dict))
         # Classes that we have examined the AST for
         self.classes_examined = {
             self.serialize_type(typ)
@@ -717,7 +715,7 @@ class ClassAttributeChecker:
     def record_attribute_read(
         self,
         typ: type,
-        version: "VersionId",
+        version: VersionId | None,
         attr_name: str,
         node: ast.AST,
         visitor: "NameCheckVisitor",
@@ -733,7 +731,7 @@ class ClassAttributeChecker:
     def record_attribute_set(
         self,
         typ: type,
-        version: "VersionId",
+        version: VersionId | None,
         attr_name: str,
         node: ast.AST,
         value: Value,
@@ -743,17 +741,17 @@ class ClassAttributeChecker:
         if serialized is None:
             return
         self.attributes_set[serialized][version].add(attr_name)
-        self.merge_attribute_value(serialized, attr_name, value)
+        self.merge_attribute_value(serialized, version, attr_name, value)
 
     def merge_attribute_value(
-        self, serialized: object, attr_name: str, value: Value
+        self, serialized: object, version: VersionId | None, attr_name: str, value: Value
     ) -> None:
         try:
             pickle.loads(pickle.dumps(value))
         except Exception:
             # If we can't serialize it, don't attempt to store it.
             value = AnyValue(AnySource.inference)
-        scope = self.attribute_values[serialized]
+        scope = self.attribute_values[serialized][version]
         if attr_name not in scope:
             scope[attr_name] = value
         elif scope[attr_name] == value:
@@ -816,15 +814,17 @@ class ClassAttributeChecker:
             # We've seen this happen when we import different modules under the same name.
             return None
 
-    def get_attribute_value(self, typ: type, attr_name: str) -> Value:
+    def get_attribute_value(self, typ: type, version: VersionId | None, attr_name: str) -> Value:
         """Gets the current recorded value of the attribute."""
         for base_typ in get_mro(typ):
             serialized_base = self.serialize_type(base_typ)
             if serialized_base is None:
                 continue
-            value = self.attribute_values[serialized_base].get(attr_name)
-            if value is not None:
-                return value
+            values = self.attribute_values[serialized_base].get(version)
+            if values is not None:
+                value = values.get(attr_name)
+                if value is not None:
+                    return value
         return AnyValue(AnySource.inference)
 
     def check_attribute_reads(self, env: "Environment") -> None:
@@ -877,7 +877,7 @@ class ClassAttributeChecker:
         all_attrs_read = collections.defaultdict(set)
 
         def _add_attrs(
-            typ: Any, version: "VersionId", attr_names_read: Set[str]
+            typ: Any, version: VersionId | None, attr_names_read: Set[str]
         ) -> None:
             if typ is None:
                 return
@@ -923,7 +923,7 @@ class ClassAttributeChecker:
     def _check_attribute_read(
         self,
         typ: type,
-        version: "VersionId",
+        version: VersionId | None,
         attr_name: str,
         node: ast.AST,
         visitor: "NameCheckVisitor",
@@ -963,6 +963,7 @@ class ClassAttributeChecker:
         serialized = self.serialize_type(typ)
 
         # it was set on an instance of the class
+        # iterate over all base versions of `version` and lookup the attribute
         for v in env.bases[typ.__name__][version]:
             if attr_name in self.attributes_set[serialized][v]:
                 return
@@ -986,7 +987,7 @@ class ClassAttributeChecker:
             # attribute was set on the base class
             if attr_name in self.attributes_set[
                 self.serialize_type(base_cls)
-            ] or hasattr(base_cls, attr_name):
+            ][version] or hasattr(base_cls, attr_name):
                 return
 
             base_classes_examined.add(base_cls)
@@ -1027,7 +1028,7 @@ class ClassAttributeChecker:
 
         message = visitor.show_error(
             node,
-            f"Attribute {attr_name} of type {typ} in version {version} probably does not exist",
+            f"Attribute {attr_name} of class {typ.__name__} in version {version} probably does not exist",
             ErrorCode.attribute_is_never_set,
         )
         # message can be None if the error is intercepted by error code settings or ignore
@@ -1272,6 +1273,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
         if self.tree is not None:
             self.env = get_module_environment(self.tree)
+        self.version = None
 
     def get_local_return_value(self, sig: MaybeSignature) -> Optional[Value]:
         val, saved_sig = self._argspec_to_retval.get(id(sig), (None, None))
@@ -1600,6 +1602,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 skip_mro=True,
                 skip_unwrap=True,
                 record_reads=False,
+                version=self.version
             )
             base_value = attributes.get_attribute(ctx)
             if base_value is not UNINITIALIZED_VALUE:
@@ -1791,14 +1794,16 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                     f"{node.id} may be used uninitialized",
                     ErrorCode.possibly_undefined_name,
                 )
-                new_mvv = MultiValuedValue([
-                    (
-                        AnyValue(AnySource.error)
-                        if subval is UNINITIALIZED_VALUE
-                        else subval
-                    )
-                    for subval in subvals
-                ])
+                new_mvv = MultiValuedValue(
+                    [
+                        (
+                            AnyValue(AnySource.error)
+                            if subval is UNINITIALIZED_VALUE
+                            else subval
+                        )
+                        for subval in subvals
+                    ]
+                )
                 if isinstance(value, AnnotatedValue):
                     return AnnotatedValue(new_mvv, value.metadata), origin
                 else:
@@ -2137,6 +2142,8 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 )
 
         self._set_argspec_to_retval(val, info, result)
+        # Remove version context
+        self.version = None
         return val
 
     def _set_argspec_to_retval(
@@ -5309,20 +5316,23 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             if isinstance(root_type, type) and not _has_only_known_attributes(
                 self.checker.ts_finder, root_type
             ):
-                return self._maybe_get_attr_value(root_type, attr)
+                return self._maybe_get_attr_value(root_type, self.version, attr)
         elif isinstance(root_value, SubclassValue):
             if isinstance(root_value.typ, TypedValue):
                 root_type = root_value.typ.typ
                 if isinstance(root_type, type) and not _has_only_known_attributes(
                     self.checker.ts_finder, root_type
                 ):
-                    return self._maybe_get_attr_value(root_type, attr)
+                    return self._maybe_get_attr_value(root_type, self.version, attr)
             else:
                 return AnyValue(AnySource.inference)
         elif isinstance(root_value, MultiValuedValue):
-            return unite_values(*[
-                self._get_attribute_fallback(val, attr, node) for val in root_value.vals
-            ])
+            return unite_values(
+                *[
+                    self._get_attribute_fallback(val, attr, node)
+                    for val in root_value.vals
+                ]
+            )
         self._show_error_if_checking(
             node,
             f"{root_value} has no attribute {attr!r}",
@@ -5465,9 +5475,12 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 unannotate_value(val, NoReturnConstraintExtension) for val in values
             ]
             val = unite_values(*[val for val, _ in pairs])
-            constraint = OrConstraint.make([
-                AndConstraint.make(ext.constraint for ext in exts) for _, exts in pairs
-            ])
+            constraint = OrConstraint.make(
+                [
+                    AndConstraint.make(ext.constraint for ext in exts)
+                    for _, exts in pairs
+                ]
+            )
         else:
             val = self._check_call_no_mvv(
                 node, callee, args, keywords, allow_call=allow_call
@@ -5656,7 +5669,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
     def _record_type_attr_set(
         self,
         typ: type,
-        version: "VersionId",
+        version: VersionId | None,
         attr_name: str,
         node: ast.AST,
         value: Value,
@@ -5666,22 +5679,28 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 typ, version, attr_name, node, value
             )
 
-    def _record_type_attr_read(self, typ: type, attr_name: str, node: ast.AST) -> None:
+    def _record_type_attr_read(
+        self, typ: type, version: VersionId | None, attr_name: str, node: ast.AST
+    ) -> None:
         if self.attribute_checker is not None:
             self.attribute_checker.record_attribute_read(
-                typ, self.version, attr_name, node, self
+                typ, version, attr_name, node, self
             )
 
-    def _maybe_get_attr_value(self, typ: type, attr_name: str) -> Value:
+    def _maybe_get_attr_value(self, typ: type, version: VersionId | None, attr_name: str) -> Value:
         if self.attribute_checker is not None:
-            return self.attribute_checker.get_attribute_value(typ, attr_name)
+            return self.attribute_checker.get_attribute_value(typ, version, attr_name)
         else:
             return AnyValue(AnySource.inference)
 
     # Finding unused objects
 
     def _maybe_record_usage(
-        self, module_or_class: object, attribute: str, value: Value
+        self,
+        module_or_class: object,
+        version: VersionId,
+        attribute: str,
+        value: Value,
     ) -> None:
         if self.unused_finder is None:
             return
@@ -5841,12 +5860,14 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 # so we can share code with normal errors better.
                 failure = str(unused_object)
                 print(unused_object)
-                all_failures.append({
-                    "filename": node_visitor.UNUSED_OBJECT_FILENAME,
-                    "absolute_filename": node_visitor.UNUSED_OBJECT_FILENAME,
-                    "message": failure + "\n",
-                    "description": failure,
-                })
+                all_failures.append(
+                    {
+                        "filename": node_visitor.UNUSED_OBJECT_FILENAME,
+                        "absolute_filename": node_visitor.UNUSED_OBJECT_FILENAME,
+                        "message": failure + "\n",
+                        "description": failure,
+                    }
+                )
         if attribute_checker is not None:
             all_failures += attribute_checker.all_failures
         return all_failures
@@ -5881,11 +5902,12 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             for serialized, versions in checker.attributes_set.items():
                 for version, attrs in versions.items():
                     attribute_checker.attributes_set[serialized][version] |= attrs
-            for serialized, attrs in checker.attribute_values.items():
-                for attr_name, value in attrs.items():
-                    attribute_checker.merge_attribute_value(
-                        serialized, attr_name, value
-                    )
+            for serialized, versions in checker.attribute_values.items():
+                for version, attrs in checker.attribute_values.items():
+                    for attr_name, value in attrs.items():
+                        attribute_checker.merge_attribute_value(
+                            serialized, version, attr_name, value
+                        )
             attribute_checker.modules_examined |= checker.modules_examined
             attribute_checker.classes_examined |= checker.modules_examined
             attribute_checker.types_with_dynamic_attrs |= (
