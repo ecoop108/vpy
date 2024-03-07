@@ -20,7 +20,7 @@ class C:
 
     @at("full")
     def b(self):
-        # This should throw a warning saying field `x` does not exist in version `full`.
+        # This should throw an error since field `x` does not exist in version `full`.
         return self.x + self.y
 
     @get("full", "init", "x")
