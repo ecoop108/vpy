@@ -682,7 +682,9 @@ class ClassAttributeChecker:
             lambda: collections.defaultdict(set)
         )
         # Used for attribute value inference
-        self.attribute_values = collections.defaultdict(lambda: collections.defaultdict(dict))
+        self.attribute_values = collections.defaultdict(
+            lambda: collections.defaultdict(dict)
+        )
         # Classes that we have examined the AST for
         self.classes_examined = {
             self.serialize_type(typ)
@@ -744,7 +746,11 @@ class ClassAttributeChecker:
         self.merge_attribute_value(serialized, version, attr_name, value)
 
     def merge_attribute_value(
-        self, serialized: object, version: VersionId | None, attr_name: str, value: Value
+        self,
+        serialized: object,
+        version: VersionId | None,
+        attr_name: str,
+        value: Value,
     ) -> None:
         try:
             pickle.loads(pickle.dumps(value))
@@ -814,7 +820,9 @@ class ClassAttributeChecker:
             # We've seen this happen when we import different modules under the same name.
             return None
 
-    def get_attribute_value(self, typ: type, version: VersionId | None, attr_name: str) -> Value:
+    def get_attribute_value(
+        self, typ: type, version: VersionId | None, attr_name: str
+    ) -> Value:
         """Gets the current recorded value of the attribute."""
         for base_typ in get_mro(typ):
             serialized_base = self.serialize_type(base_typ)
@@ -985,9 +993,9 @@ class ClassAttributeChecker:
                 continue
 
             # attribute was set on the base class
-            if attr_name in self.attributes_set[
-                self.serialize_type(base_cls)
-            ][version] or hasattr(base_cls, attr_name):
+            if attr_name in self.attributes_set[self.serialize_type(base_cls)][
+                version
+            ] or hasattr(base_cls, attr_name):
                 return
 
             base_classes_examined.add(base_cls)
@@ -1542,14 +1550,14 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         if self.ann_assign_type is not None:
             expected_type, is_final = self.ann_assign_type
             if not current_scope.set_declared_type(
-                varname, expected_type, is_final, node
+                self.version, varname, expected_type, is_final, node
             ):
                 self._show_error_if_checking(
                     node, f"{varname} already declared", ErrorCode.already_declared
                 )
 
         else:
-            declared_type = current_scope.get_declared_type(varname)
+            declared_type = current_scope.get_declared_type(self.version, varname)
             if declared_type is not None and value is not None:
                 can_assign = declared_type.can_assign(value, self)
                 if isinstance(can_assign, CanAssignError):
@@ -1560,7 +1568,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                         error_code=ErrorCode.incompatible_assignment,
                         detail=can_assign.display(),
                     )
-            if current_scope.is_final(varname):
+            if current_scope.is_final(self.version, varname):
                 self._show_error_if_checking(
                     node,
                     f"Cannot assign to final name {varname}",
@@ -1573,20 +1581,29 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 self.reexport_tracker.record_exported_attribute(
                     self.module.__name__, varname
                 )
-            if varname in current_scope.variables:
-                value, _ = current_scope.get_local(varname, lookup_node, self.state)
+            if (
+                self.version in current_scope.variables
+                and varname in current_scope.variables[self.version]
+            ):
+                value, _ = current_scope.get_local(
+                    self.version, varname, lookup_node, self.state
+                )
                 return value, EMPTY_ORIGIN
         if scope_type == ScopeType.class_scope:
             if value is not None:
-                self._check_for_incompatible_overrides(varname, node, value)
-            self._check_for_class_variable_redefinition(varname, node)
+                self._check_for_incompatible_overrides(
+                    self.version, varname, node, value
+                )
+            self._check_for_class_variable_redefinition(self.version, varname, node)
         if value is None:
             return AnyValue(AnySource.inference), EMPTY_ORIGIN
-        origin = current_scope.set(varname, value, lookup_node, self.state)
+        origin = current_scope.set(
+            self.version, varname, value, lookup_node, self.state
+        )
         return value, origin
 
     def _get_base_class_attributes(
-        self, varname: str, node: ast.AST
+        self, version: VersionId | None, varname: str, node: ast.AST
     ) -> Iterable[Tuple[Union[type, str], Value]]:
         if self.current_class is None:
             return
@@ -1602,20 +1619,22 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 skip_mro=True,
                 skip_unwrap=True,
                 record_reads=False,
-                version=self.version
+                version=self.version,
             )
             base_value = attributes.get_attribute(ctx)
             if base_value is not UNINITIALIZED_VALUE:
                 yield base_class, base_value
 
     def _check_for_incompatible_overrides(
-        self, varname: str, node: ast.AST, value: Value
+        self, version: VersionId | None, varname: str, node: ast.AST, value: Value
     ) -> None:
         if self.current_class is None:
             return
         if varname in self.options.get_value_for(IgnoredForIncompatibleOverride):
             return
-        for base_class, base_value in self._get_base_class_attributes(varname, node):
+        for base_class, base_value in self._get_base_class_attributes(
+            version, varname, node
+        ):
             can_assign = self._can_assign_to_base(base_value, value, base_class, node)
             if isinstance(can_assign, CanAssignError):
                 error = CanAssignError(
@@ -1714,9 +1733,12 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         return base_bound.can_assign(child_bound, self)
 
     def _check_for_class_variable_redefinition(
-        self, varname: str, node: ast.AST
+        self, version: VersionId | None, varname: str, node: ast.AST
     ) -> None:
-        if varname not in self.scopes.current_scope().variables:
+        scope = self.scopes.current_scope()
+        if version not in scope.variables:
+            return
+        if varname not in scope.variables[version]:
             return
 
         # exclude cases where we do @<property>.setter
@@ -1759,7 +1781,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         if error_node is None:
             error_node = node
         value, defining_scope, origin = self.scopes.get_with_scope(
-            node.id, node, self.state
+            self.version, node.id, node, self.state
         )
         if defining_scope is not None:
             if defining_scope.scope_type in (
@@ -1855,7 +1877,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
     def _get_local_object(self, name: str, node: ast.AST) -> Value:
         if self.scopes.scope_type() == ScopeType.module_scope:
-            return self.scopes.get(name, node, self.state)
+            return self.scopes.get(self.version, name, node, self.state)
         elif (
             self.scopes.scope_type() == ScopeType.class_scope
             and self.current_class is not None
@@ -2070,7 +2092,6 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 expected_return = info.return_annotation | KnownValue(NotImplemented)
             else:
                 expected_return = info.return_annotation
-            # TODO: Set version here to type check body
             with (
                 self.asynq_checker.set_func_name(
                     node.name,
@@ -2113,7 +2134,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                     node, error_code=ErrorCode.invalid_override_decorator
                 )
             else:
-                if not any(self._get_base_class_attributes(node.name, node)):
+                if not any(
+                    self._get_base_class_attributes(self.version, node.name, node)
+                ):
                     self._show_error_if_checking(
                         node, error_code=ErrorCode.override_does_not_override
                     )
@@ -2286,12 +2309,14 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 if info.is_self:
                     # we need this for the implementation of super()
                     self.scopes.set(
+                        self.version,
                         "%first_arg",
                         info.param.annotation,
                         "%first_arg",
                         VisitorState.check_names,
                     )
                 self.scopes.set(
+                    self.version,
                     info.param.name,
                     info.param.annotation,
                     info.node,
@@ -2307,7 +2332,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                     self.visit(node.body)
                 else:
                     self._generic_visit_list(node.body)
-                scope.get_local(LEAVES_SCOPE, node, self.state)
+                scope.get_local(self.version, LEAVES_SCOPE, node, self.state)
             if is_collecting:
                 return FunctionResult(is_generator=self.is_generator, parameters=params)
 
@@ -2326,7 +2351,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 else:
                     self._generic_visit_list(node.body)
                     return_values = self.return_values
-                return_set, _ = scope.get_local(LEAVES_SCOPE, node, self.state)
+                return_set, _ = scope.get_local(
+                    self.version, LEAVES_SCOPE, node, self.state
+                )
 
             self._check_function_unused_vars(scope)
             return self._compute_return_type(
@@ -3209,7 +3236,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
     def _name_exists(self, name: str) -> bool:
         try:
-            val = self.scopes.get(name, None, VisitorState.check_names)
+            val = self.scopes.get(self.version, name, None, VisitorState.check_names)
         except KeyError:
             return False
         else:
@@ -4932,7 +4959,11 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 and self.scopes.scope_type() == ScopeType.function_scope
             ):
                 self.scopes.set(
-                    composite_var.get_varname(), self.being_assigned, node, self.state
+                    self.version,
+                    composite_var.get_varname(),
+                    self.being_assigned,
+                    node,
+                    self.state,
                 )
             self._check_dunder_call(
                 node.value,
@@ -5120,7 +5151,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
     def _get_composite(self, composite: Varname, node: ast.AST, value: Value) -> Value:
         local_value, _ = self.scopes.current_scope().get_local(
-            composite, node, self.state, fallback_value=value
+            self.version, composite, node, self.state, fallback_value=value
         )
         if isinstance(local_value, MultiValuedValue):
             vals = [val for val in local_value.vals if val is not UNINITIALIZED_VALUE]
@@ -5139,7 +5170,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         varname = root_composite.get_extended_varname(index)
         if varname is None:
             return None
-        origin = self.scopes.current_scope().get_origin(varname, node, self.state)
+        origin = self.scopes.current_scope().get_origin(
+            self.version, varname, node, self.state
+        )
         return root_composite.get_extended_varname_with_origin(index, origin)
 
     def composite_from_attribute(self, node: ast.Attribute) -> Composite:
@@ -5165,7 +5198,11 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 and self.scopes.scope_type() == ScopeType.function_scope
             ):
                 self.scopes.set(
-                    composite.get_varname(), self.being_assigned, node, self.state
+                    self.version,
+                    composite.get_varname(),
+                    self.being_assigned,
+                    node,
+                    self.state,
                 )
 
             if isinstance(root_composite.value, TypedValue):
@@ -5687,7 +5724,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 typ, version, attr_name, node, self
             )
 
-    def _maybe_get_attr_value(self, typ: type, version: VersionId | None, attr_name: str) -> Value:
+    def _maybe_get_attr_value(
+        self, typ: type, version: VersionId | None, attr_name: str
+    ) -> Value:
         if self.attribute_checker is not None:
             return self.attribute_checker.get_attribute_value(typ, version, attr_name)
         else:
@@ -5935,7 +5974,7 @@ def build_stacked_scopes(
             if val is None:
                 val = KnownValue(value)
             module_vars[key] = val
-    return StackedScopes(module_vars, module, simplification_limit=simplification_limit)
+    return StackedScopes({None: module_vars}, module, simplification_limit=simplification_limit)
 
 
 def _get_task_cls(fn: object) -> "Type[asynq.FutureBase[Any]]":

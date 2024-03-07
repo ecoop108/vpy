@@ -49,6 +49,8 @@ from typing import (
 
 import qcore
 
+from vpy.lib.lib_types import VersionId
+
 from .boolability import get_boolability
 from .extensions import reveal_type
 from .safe import safe_equals, safe_issubclass
@@ -704,7 +706,7 @@ class Scope:
     """
 
     scope_type: ScopeType
-    variables: Dict[Varname, Value] = field(default_factory=dict)
+    variables: Dict[VersionId, Dict[Varname, Value]] = field(default_factory=dict)
     parent_scope: Optional["Scope"] = None
     scope_node: Optional[Node] = None
     scope_object: Optional[object] = None
@@ -725,23 +727,24 @@ class Scope:
 
     def get(
         self,
+        version: VersionId | None,
         varname: Varname,
         node: object,
         state: VisitorState,
         from_parent_scope: bool = False,
     ) -> Tuple[Value, Optional["Scope"], VarnameOrigin]:
         local_value, origin = self.get_local(
-            varname, node, state, from_parent_scope=from_parent_scope
+            version, varname, node, state, from_parent_scope=from_parent_scope
         )
         if local_value is not UNINITIALIZED_VALUE:
-            return self.resolve_reference(local_value, state), self, origin
+            return self.resolve_reference(version, local_value, state), self, origin
         elif self.parent_scope is not None:
             # Parent scopes don't get the node to help local lookup.
             parent_node = (
                 (varname, self.scope_node) if self.scope_node is not None else None
             )
             val, scope, _ = self.parent_scope.get(
-                varname, parent_node, state, from_parent_scope=True
+                version, varname, parent_node, state, from_parent_scope=True
             )
             # Tag lookups in the parent scope with this scope node, so we
             # don't carry over constraints across scopes.
@@ -751,16 +754,18 @@ class Scope:
 
     def get_local(
         self,
+        version: VersionId | None,
         varname: Varname,
         node: Node,
         state: VisitorState,
         from_parent_scope: bool = False,
         fallback_value: Optional[Value] = None,
     ) -> Tuple[Value, VarnameOrigin]:
-        if varname in self.variables:
-            return self.variables[varname], EMPTY_ORIGIN
-        else:
-            return UNINITIALIZED_VALUE, EMPTY_ORIGIN
+        if version not in self.variables:
+            version = None
+        if version in self.variables and varname in self.variables[version]:
+            return self.variables[version][varname], EMPTY_ORIGIN
+        return UNINITIALIZED_VALUE, EMPTY_ORIGIN
 
     def get_origin(
         self, varname: Varname, node: Node, state: VisitorState
@@ -768,16 +773,23 @@ class Scope:
         return EMPTY_ORIGIN
 
     def set(
-        self, varname: Varname, value: Value, node: Node, state: VisitorState
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        value: Value,
+        node: Node,
+        state: VisitorState,
     ) -> VarnameOrigin:
-        if varname not in self.variables:
-            self.variables[varname] = value
+        if version not in self.variables:
+            self.variables[version] = {}
+        if varname not in self.variables[version]:
+            self.variables[version][varname] = value
         elif isinstance(value, AnyValue) or not safe_equals(
-            self.variables[varname], value
+            self.variables[version][varname], value
         ):
-            existing = self.variables[varname]
+            existing = self.variables[version][varname]
             if isinstance(existing, ReferencingValue):
-                existing.scope.set(existing.name, value, node, state)
+                existing.scope.set(version, existing.name, value, node, state)
             elif (
                 type(existing) is TypedValue
                 and isinstance(value, TypedValue)
@@ -786,22 +798,29 @@ class Scope:
                 and existing.typ is value.typ
             ):
                 # replace with a more specific TypedValue
-                self.variables[varname] = value
+                self.variables[version][varname] = value
             else:
-                self.variables[varname] = unite_values(existing, value)
+                self.variables[version][varname] = unite_values(existing, value)
         return EMPTY_ORIGIN
 
-    def items(self) -> Iterable[Tuple[Varname, Value]]:
+    def items(self) -> Iterable[Tuple[VersionId, Dict[Varname, Value]]]:
         return self.variables.items()
 
-    def all_variables(self) -> Iterable[Varname]:
+    def all_variables(self) -> Iterable[VersionId]:
         return self.variables
 
     def set_declared_type(
-        self, varname: str, typ: Optional[Value], is_final: bool, node: AST
+        self,
+        version: VersionId | None,
+        varname: str,
+        typ: Optional[Value],
+        is_final: bool,
+        node: AST,
     ) -> bool:
-        if varname in self.declared_types:
-            _, _, existing_node = self.declared_types[varname]
+        if version not in self.declared_types:
+            self.declared_types[version] = {}
+        if varname in self.declared_types[version]:
+            _, _, existing_node = self.declared_types[version][varname]
             already_present = node is not existing_node
             # Don't replace the existing node, or we'll generate spurious already_declared
             # errors.
@@ -809,23 +828,31 @@ class Scope:
         else:
             already_present = False
         # Even if we give an error, still honor the later type.
-        self.declared_types[varname] = (typ, is_final, node)
+        self.declared_types[version][varname] = (typ, is_final, node)
         return not already_present
 
-    def get_declared_type(self, varname: str) -> Optional[Value]:
-        if varname not in self.declared_types:
+    def get_declared_type(
+        self, version: VersionId | None, varname: str
+    ) -> Optional[Value]:
+        if version not in self.declared_types:
             return None
-        typ, _, _ = self.declared_types[varname]
+        if varname not in self.declared_types[version]:
+            return None
+        typ, _, _ = self.declared_types[version][varname]
         return typ
 
-    def is_final(self, varname: str) -> bool:
-        if varname not in self.declared_types:
+    def is_final(self, version: VersionId | None, varname: str) -> bool:
+        if version not in self.declared_types:
             return False
-        _, is_final, _ = self.declared_types[varname]
+        if varname not in self.declared_types[version]:
+            return False
+        _, is_final, _ = self.declared_types[version][varname]
         return is_final
 
-    def __contains__(self, varname: Varname) -> bool:
-        return varname in self.variables or varname in self.declared_types
+    def __contains__(self, version: VersionId | None, varname: Varname) -> bool:
+        return (version in self.variables and varname in self.variables[version]) or (
+            version in self.declared_types and varname in self.declared_types[version]
+        )
 
     @contextlib.contextmanager
     def suppressing_subscope(self) -> Iterator[SubScope]:
@@ -846,9 +873,11 @@ class Scope:
     ) -> None:
         pass
 
-    def resolve_reference(self, value: Value, state: VisitorState) -> Value:
+    def resolve_reference(
+        self, version: VersionId | None, value: Value, state: VisitorState
+    ) -> Value:
         if isinstance(value, ReferencingValue):
-            referenced, _, _ = value.scope.get(value.name, None, state)
+            referenced, _, _ = value.scope.get(version, value.name, None, state)
             # globals that are None are probably set to something else later
             if safe_equals(referenced, KnownValue(None)):
                 return AnyValue(AnySource.inference)
@@ -1025,6 +1054,7 @@ class FunctionScope(Scope):
 
     def __init__(
         self,
+        version: VersionId | None,
         parent_scope: Scope,
         scope_node: Optional[Node] = None,
         simplification_limit: Optional[int] = None,
@@ -1046,6 +1076,7 @@ class FunctionScope(Scope):
         # are ignored when looking at unused variables.
         self.accessed_from_special_nodes = set()
         self.current_loop_scopes = []
+        self.version = version
 
     def add_constraint(
         self, abstract_constraint: AbstractConstraint, node: Node, state: VisitorState
@@ -1068,7 +1099,7 @@ class FunctionScope(Scope):
         self, constraint: Constraint, node: Node, state: VisitorState
     ) -> None:
         for parent_varname, constraint_origin in constraint.varname.get_all_varnames():
-            current_origin = self.get_origin(parent_varname, node, state)
+            current_origin = self.get_origin(self.version, parent_varname, node, state)
             current_set = self._resolve_origin(current_origin)
             constraint_set = self._resolve_origin(constraint_origin)
             if current_set - constraint_set:
@@ -1109,7 +1140,12 @@ class FunctionScope(Scope):
         return frozenset(out)
 
     def set(
-        self, varname: Varname, value: Value, node: Node, state: VisitorState
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        value: Value,
+        node: Node,
+        state: VisitorState,
     ) -> VarnameOrigin:
         if isinstance(value, ReferencingValue):
             self.referencing_value_vars[varname] = value
@@ -1134,6 +1170,7 @@ class FunctionScope(Scope):
 
     def get_local(
         self,
+        version: VersionId | None,
         varname: Varname,
         node: Node,
         state: VisitorState,
@@ -1167,7 +1204,11 @@ class FunctionScope(Scope):
         return self._get_value_from_nodes(definers, ctx), self._resolve_origin(definers)
 
     def get_origin(
-        self, varname: Varname, node: Node, state: VisitorState
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        node: Node,
+        state: VisitorState,
     ) -> VarnameOrigin:
         key = (node, varname)
         if node is None:
@@ -1314,7 +1355,9 @@ class FunctionScope(Scope):
                 assert (
                     self.parent_scope
                 ), "constrained value must have definition nodes or parent scope"
-                parent_val, _, _ = self.parent_scope.get(ctx.varname, None, ctx.state)
+                parent_val, _, _ = self.parent_scope.get(
+                    self.version, ctx.varname, None, ctx.state
+                )
                 resolved = _constrain_value(
                     [parent_val],
                     val.constraints,
@@ -1384,8 +1427,10 @@ class StackedScopes:
     _builtin_scope = Scope(
         ScopeType.builtin_scope,
         {
-            **{k: KnownValue(v) for k, v in builtins.__dict__.items()},
-            "reveal_type": KnownValue(reveal_type),
+            None: {
+                **{k: KnownValue(v) for k, v in builtins.__dict__.items()},
+                "reveal_type": KnownValue(reveal_type),
+            }
         },
         None,
     )
@@ -1415,11 +1460,13 @@ class StackedScopes:
         scope_type: ScopeType,
         scope_node: Node,
         scope_object: Optional[object] = None,
+        version: VersionId | None = None,
     ) -> Iterator[None]:
         """Context manager that adds a scope of this type to the top of the stack."""
+        # TODO: Add custom class scope here
         if scope_type is ScopeType.function_scope:
             scope = FunctionScope(
-                self.scopes[-1], scope_node, self.simplification_limit
+                version, self.scopes[-1], scope_node, self.simplification_limit
             )
         else:
             scope = Scope(
@@ -1455,7 +1502,13 @@ class StackedScopes:
         finally:
             self.scopes += rest
 
-    def get(self, varname: Varname, node: Node, state: VisitorState) -> Value:
+    def get(
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        node: Node,
+        state: VisitorState,
+    ) -> Value:
         """Gets a variable of the given name from the current scope stack.
 
         :param varname: :term:`varname` of the variable to retrieve
@@ -1480,11 +1533,15 @@ class StackedScopes:
         scope.
 
         """
-        value, _, _ = self.get_with_scope(varname, node, state)
+        value, _, _ = self.get_with_scope(version, varname, node, state)
         return value
 
     def get_with_scope(
-        self, varname: Varname, node: Node, state: VisitorState
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        node: Node,
+        state: VisitorState,
     ) -> Tuple[Value, Optional[Scope], VarnameOrigin]:
         """Like :meth:`get`, but also returns the scope object the name was found in.
 
@@ -1492,10 +1549,10 @@ class StackedScopes:
         is ``None`` if the name was not found.
 
         """
-        return self.scopes[-1].get(varname, node, state)
+        return self.scopes[-1].get(version, varname, node, state)
 
     def get_nonlocal_scope(
-        self, varname: Varname, using_scope: Scope
+        self, version: VersionId | None, varname: Varname, using_scope: Scope
     ) -> Optional[Scope]:
         """Gets the defining scope of a non-local variable."""
         for scope in reversed(self.scopes):
@@ -1508,7 +1565,12 @@ class StackedScopes:
         return None
 
     def set(
-        self, varname: Varname, value: Value, node: Node, state: VisitorState
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        value: Value,
+        node: Node,
+        state: VisitorState,
     ) -> None:
         """Records an assignment to this variable.
 
@@ -1516,7 +1578,7 @@ class StackedScopes:
         arguments are the same as those of :meth:`get`.
 
         """
-        self.scopes[-1].set(varname, value, node, state)
+        self.scopes[-1].set(version, varname, value, node, state)
 
     def suppressing_subscope(self) -> ContextManager[SubScope]:
         return self.scopes[-1].suppressing_subscope()
