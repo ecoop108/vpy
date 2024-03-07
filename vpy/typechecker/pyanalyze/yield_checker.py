@@ -214,6 +214,8 @@ class YieldChecker:
 
     def record_assignment(self, version: VersionId, name: str) -> None:
         if self.in_yield_result_assignment:
+            if version not in self.variables_from_yield_result:
+                self.variables_from_yield_result[version] = {}
             self.variables_from_yield_result[version][name] = False
 
     def record_usage(self, version: VersionId, name: str, node: ast.AST) -> None:
