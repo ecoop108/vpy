@@ -110,7 +110,7 @@ def check_missing_field_lenses(
         methods = env.methods[cls_ast.name][v.name]
         lenses_methods = {
             l.node
-            for w in lenses[v.name].values()
+            for w in lenses.get(v.name, {}).values()
             for l in w.values()
             if l.node is not None
         }
@@ -119,19 +119,15 @@ def check_missing_field_lenses(
                 assert False
             mver = get_at(m)
             if mver != v.name and mver not in env.bases[cls_ast.name][v.name]:
-                references = fields_in_function(
-                    node=m, fields=env.fields[cls_ast.name][mver]
-                )
-                for ref in references:
+                for field in env.fields[cls_ast.name][mver]:
                     if (
-                        ref.name not in lenses[mver]
-                        or v.name not in lenses[mver][ref.name]
+                        field.name not in lenses[mver]
+                        or v.name not in lenses[mver][field.name]
                     ):
                         return (
                             False,
                             [
-                                f"No path between versions {mver} and {v.name} for"
-                                f" field {ref.name} in method {m.name}"
+                                f"No path between versions {mver} and {v.name} for field {field.name}"
                             ],
                         )
     return (True, [])
