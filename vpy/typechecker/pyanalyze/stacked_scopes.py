@@ -768,7 +768,11 @@ class Scope:
         return UNINITIALIZED_VALUE, EMPTY_ORIGIN
 
     def get_origin(
-        self, varname: Varname, node: Node, state: VisitorState
+        self,
+        version: VersionId | None,
+        varname: Varname,
+        node: Node,
+        state: VisitorState,
     ) -> VarnameOrigin:
         return EMPTY_ORIGIN
 

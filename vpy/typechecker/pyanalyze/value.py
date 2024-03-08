@@ -642,7 +642,8 @@ class UnboundMethodValue(Value):
 
     def get_method(self) -> Optional[Any]:
         """Return the runtime callable for this ``UnboundMethodValue``, or
-        None if it cannot be found."""
+        None if it cannot be found.
+        Perform versioned lookup for method definitions."""
         root = self.composite.value
         if isinstance(root, AnnotatedValue):
             root = root.value
@@ -650,6 +651,7 @@ class UnboundMethodValue(Value):
             typ = root.val
         else:
             typ = root.get_type()
+        # TODO: Add versioned lookup here
         try:
             method = getattr(typ, self.attr_name)
             if self.secondary_attr_name is not None:
