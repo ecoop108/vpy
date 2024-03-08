@@ -242,7 +242,9 @@ def __replacement_method_lookup(
         return None
     replacements = g.replacements(v)
     rm: set[FunctionDef] = set()
-    for me in [_method_lookup(g.delete(v), cls_ast, m, r.name) for r in replacements]:
+    for me in set(
+        _method_lookup(g.delete(v), cls_ast, m, r.name) for r in replacements
+    ):
         if me is not None:
             if isinstance(me, tuple):
                 rm.union(set(me))
@@ -254,7 +256,17 @@ def __replacement_method_lookup(
                     ):
                         return lm
                 rm.add(me)
-    return tuple(rm) if len(rm) > 0 else None
+    if len(rm) == 0:
+        return None
+    if len(rm) == 1:
+        mv = get_at(list(rm)[0])
+        ge = g.delete(v)
+        ge = g.delete(mv)
+        me = _method_lookup(ge, cls_ast, m, v)
+        if isinstance(me, tuple):
+            return me
+
+    return tuple(rm)
 
 
 def __local_method_lookup(

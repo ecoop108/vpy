@@ -50,11 +50,15 @@ def check_module(module: ModuleType) -> tuple[bool, list[str]]:
     mod_ast, visitor = parse_module(module)
     mod_env = get_module_environment(mod_ast)
     mod_env.visitor = visitor
+    status = True
+    err = []
     for node in mod_ast.body:
         if isinstance(node, ClassDef):
-            return check_cls(module, node, mod_env)
-    return (True, [])
-    # return check_cls(module)
+            cls_status, cls_err = check_cls(module, node, mod_env)
+            if not cls_status:
+                status = False
+                err += cls_err
+    return (status, err)
 
 
 def check_cls(
@@ -91,7 +95,7 @@ def check_methods(
                 return (
                     False,
                     [
-                        f"Conflict {m[0].name}:"
+                        f"Conflict in method {m[0].name} of class {cls_ast.name}:"
                         f" {v, [get_at(n) for n in m if get_at(n) != v]}"
                     ],
                 )
@@ -231,40 +235,40 @@ def check_missing_method_lenses(
                                 f"""Missing method lens between versions {v.name} and {get_at(m)} for method {m.name}"""
                             ],
                         )
-            elif get_at(m) != v.name:
-                for node in walk(m):
-                    if isinstance(node, Call) and isinstance(node.func, Attribute):
-                        obj_type = annotation_from_type_value(
-                            typeof_node(node.func.value)
-                        )
-                        if obj_type == cls_ast.name:
-                            callee_t = [
-                                m
-                                for m in env.methods[cls_ast.name][get_at(m)]
-                                if m.name == node.func.attr
-                            ][0]
-                            callee_t_sig = env.visitor.visit(callee_t).signature
-                            m_sig = env.visitor.visit(m).signature
-                            if (
-                                lenses.find_lens(
-                                    v_from=get_at(m),
-                                    v_to=get_at(callee_t),
-                                    field_name=callee_t.name,
-                                )
-                                is None
-                            ):
-                                if get_at(m) != get_at(callee_t) and (
-                                    (
-                                        len(m_sig.parameters)
-                                        != len(callee_t_sig.parameters)
-                                    )
-                                    or (m_sig != callee_t_sig)
-                                    or (m_sig.return_value != mdef_sig.return_value)
-                                ):
-                                    return (
-                                        False,
-                                        [
-                                            f"""Missing method lens between versions {get_at(m)} and {get_at(callee_t)} for method {callee_t.name}"""
-                                        ],
-                                    )
+            # elif get_at(m) != v.name:
+            #     for node in walk(m):
+            #         if isinstance(node, Call) and isinstance(node.func, Attribute):
+            #             obj_type = annotation_from_type_value(
+            #                 typeof_node(node.func.value)
+            #             )
+            #             if obj_type == cls_ast.name:
+            #                 callee_t = [
+            #                     m
+            #                     for m in env.methods[cls_ast.name][get_at(m)]
+            #                     if m.name == node.func.attr
+            #                 ][0]
+            #                 callee_t_sig = env.visitor.visit(callee_t).signature
+            #                 m_sig = env.visitor.visit(m).signature
+            #                 if (
+            #                     lenses.find_lens(
+            #                         v_from=get_at(m),
+            #                         v_to=get_at(callee_t),
+            #                         field_name=callee_t.name,
+            #                     )
+            #                     is None
+            #                 ):
+            #                     if get_at(m) != get_at(callee_t) and (
+            #                         (
+            #                             len(m_sig.parameters)
+            #                             != len(callee_t_sig.parameters)
+            #                         )
+            #                         or (m_sig != callee_t_sig)
+            #                         or (m_sig.return_value != mdef_sig.return_value)
+            #                     ):
+            #                         return (
+            #                             False,
+            #                             [
+            #                                 f"""Missing method lens between versions {get_at(m)} and {get_at(callee_t)} for method {callee_t.name}"""
+            #                             ],
+            #                         )
     return (True, [])
