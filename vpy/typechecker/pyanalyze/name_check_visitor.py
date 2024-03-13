@@ -5299,7 +5299,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             node=node,
             ignore_none=ignore_none,
             prefer_typeshed=prefer_typeshed,
-            version=None if not hasattr(self, "version") else self.version,
+            version=self.version,
             env=self.env,
         )
         result = attributes.get_attribute(ctx)
