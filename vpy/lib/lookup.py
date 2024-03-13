@@ -3,7 +3,7 @@ from ast import ClassDef, FunctionDef, NodeVisitor
 from vpy.lib.lib_types import Field, Graph, Lenses, VersionId
 from vpy.lib.utils import (
     fields_in_function,
-    get_decorator,
+    get_decorators,
     is_lens,
     get_at,
 )
@@ -116,8 +116,9 @@ def __lenses_at(
     lenses: dict[str, dict[VersionId, FunctionDef]] = {}
     for method in cls_ast.body:
         if isinstance(method, FunctionDef):
-            decorator = get_decorator(method, "get")
-            if decorator:
+            decorators = get_decorators(method, "get")
+            if len(decorators) > 0:
+                decorator = decorators[0]
                 at, target, field = [
                     a.value for a in decorator.args if isinstance(a, ast.Constant)
                 ]

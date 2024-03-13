@@ -126,6 +126,8 @@ class AssignTransformer(ast.NodeTransformer):
         if step_lens.node is None:
             return [Assign(targets=[lhs], value=rhs)]
         step_target = get_at(step_lens.node)
+        if step_target is None:
+            return [Assign(targets=[lhs], value=rhs)]
         # Iterate over lenses from step_target to v_from
         # to detect which attributes are affected
         # by a change to the field in lhs

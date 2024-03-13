@@ -12,6 +12,7 @@ from vpy.lib.utils import parse_module, graph
 from vpy.typechecker.checker import check_module
 
 
+# TODO: Refactor this code, read errors from namecheckvisitor
 def graph_versions(file) -> list[list[dict[str, list[dict]]]]:
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     if spec is None or spec.loader is None:

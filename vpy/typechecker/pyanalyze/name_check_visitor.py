@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     ClassVar,
@@ -660,7 +659,6 @@ class ClassAttributeChecker:
         should_serialize: bool = False,
         options: Options = Options.from_option_list(),
         ts_finder: Optional[TypeshedFinder] = None,
-        tree: ast.Module,
     ) -> None:
         self.options = options
         # we might not have examined all parent classes when looking for attributes set
@@ -691,7 +689,6 @@ class ClassAttributeChecker:
             for typ in self.options.get_value_for(IgnoredTypesForAttributeChecking)
         }
         self.ts_finder = ts_finder
-        self.tree = tree
 
     def __enter__(self) -> Optional["ClassAttributeChecker"]:
         if self.enabled:
@@ -776,8 +773,11 @@ class ClassAttributeChecker:
         if serialized is not None:
             self.classes_examined.add(serialized)
 
-    def record_module_examined(self, module_name: str) -> None:
-        self.modules_examined.add(module_name)
+    def record_module_examined(self, module: type) -> None:
+        with open(os.fspath(module.__file__), encoding="utf-8") as f:
+            code = f.read()
+        self.tree = ast.parse(code)
+        self.modules_examined.add(module.__name__)
 
     def serialize_type(self, typ: type) -> object:
         """Serialize a type so it is pickleable.
@@ -1240,7 +1240,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             and self.module is not None
             and not self.is_compiled
         ):
-            self.attribute_checker.record_module_examined(self.module.__name__)
+            self.attribute_checker.record_module_examined(self.module)
 
         self.scopes = build_stacked_scopes(
             self.module,
@@ -1859,6 +1859,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Value:
         # self._generic_visit_list(node.decorator_list)
+        # Check that version graph is well formed
         class_obj = self._get_current_class_object(node)
         if sys.version_info >= (3, 12) and node.type_params:
             ctx = self.scopes.add_scope(
@@ -5974,7 +5975,9 @@ def build_stacked_scopes(
             if val is None:
                 val = KnownValue(value)
             module_vars[key] = val
-    return StackedScopes({None: module_vars}, module, simplification_limit=simplification_limit)
+    return StackedScopes(
+        {None: module_vars}, module, simplification_limit=simplification_limit
+    )
 
 
 def _get_task_cls(fn: object) -> "Type[asynq.FutureBase[Any]]":

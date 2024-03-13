@@ -142,13 +142,13 @@ def check_method_lenses(g: Graph, cls_ast: ClassDef, env: Environment):
                 if lens_node is None:
                     continue
                 m_v = _method_lookup(
-                    Graph(graph={v: g.find_version(v)}),
+                    Graph(graph=[g.find_version(v)]),
                     cls_ast,
                     method,
                     v,
                 )
                 m_t = _method_lookup(
-                    Graph(graph={t: g.find_version(t)}),
+                    Graph(graph=[g.find_version(t)]),
                     cls_ast,
                     method,
                     t,
@@ -190,7 +190,7 @@ def check_missing_method_lenses(
         for m in methods:
 
             mdef = _method_lookup(
-                Graph(graph={v.name: v}),
+                Graph(graph=[v]),
                 cls_ast,
                 m.name,
                 v.name,

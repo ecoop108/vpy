@@ -15,6 +15,8 @@ import traceback
 import types
 from typing import Optional, Type, Union
 
+from vpy.typechecker.pyanalyze.version_checker import VersionCheckVisitor
+
 from .analysis_lib import make_module
 from .error_code import ErrorCode
 from .find_unused import used
@@ -79,7 +81,7 @@ def annotate_file(
     verbose: bool = False,
     dump: bool = False,
     show_errors: bool = False,
-) -> ast.AST:
+) -> tuple[ast.Module, NameCheckVisitor]:
     """Annotate the code in a Python source file. Return an AST with extra `inferred_value`
     attributes.
 
@@ -116,10 +118,12 @@ def annotate_file(
     with open(filename, encoding="utf-8") as f:
         code = f.read()
     tree = ast.parse(code)
-    _annotate_module(filename, mod, tree, code, visitor_cls, show_errors=show_errors)
+    visitor = _annotate_module(
+        filename, mod, tree, code, visitor_cls, show_errors=show_errors
+    )
     if dump:
         dump_annotated_code(tree)
-    return tree
+    return tree, visitor
 
 
 def dump_annotated_code(
@@ -171,7 +175,20 @@ def _annotate_module(
     """
     kwargs = visitor_cls.prepare_constructor_kwargs({})
     options = kwargs["checker"].options
-    with ClassAttributeChecker(enabled=True, options=options, tree=tree) as attribute_checker:
+    with ClassAttributeChecker(
+        enabled=True, options=options, tree=tree
+    ) as attribute_checker:
+        version_visitor = VersionCheckVisitor(
+            filename,
+            code_str,
+            tree,
+            module=module,
+            settings={error_code: show_errors for error_code in ErrorCode},
+            attribute_checker=attribute_checker,
+            annotate=True,
+            **kwargs,
+        )
+        version_visitor.check(ignore_missing_module=True)
         visitor = visitor_cls(
             filename,
             code_str,

@@ -76,6 +76,7 @@ class Environment:
     put_lenses: dict[str, Lenses] = field(default_factory=dict)
     method_lenses: dict[str, Lenses] = field(default_factory=dict)
     cls_ast: dict[str, ClassDef] = field(default_factory=dict)
+    versions: dict[str, "Graph"] = field(default_factory=dict)
 
 
 class Version:
@@ -101,11 +102,11 @@ class Version:
 
 
 class Graph(nx.DiGraph):
-    def __init__(self, *, graph: dict[VersionId, Version] = {}):
+    def __init__(self, *, graph: list[Version] = []):
         super().__init__()
-        for version in graph.values():
+        for version in graph:
             self.add_node(version)
-        for version in graph.values():
+        for version in graph:
             for upgrade in version.upgrades:
                 if upgrade in graph:
                     self.add_edge(version, graph[upgrade], label="upgrades")

@@ -46,7 +46,7 @@ class MethodLensTransformer(ast.NodeTransformer):
 
         if method_lens is not None:
             mdef = _method_lookup(
-                Graph(graph={self.v_target: self.g.find_version(self.v_target)}),
+                Graph(graph=[self.g.find_version(self.v_target)]),
                 self.env.cls_ast[self.cls_ast.name],
                 node.name,
                 self.v_target,

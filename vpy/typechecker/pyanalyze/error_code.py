@@ -107,6 +107,12 @@ class ErrorCode(enum.Enum):
     reveal_type = 87
     missing_generic_parameters = 88
     disallowed_import = 89
+    # Version errors
+    undefined_version = 500
+    self_replace_version = 501
+    self_upgrade_version = 502
+    cyclic_version_graph = 503
+    duplicate_version = 504
 
 
 # Allow testing unannotated functions without too much fuss
@@ -239,6 +245,11 @@ ERROR_DESCRIPTION = {
     ErrorCode.override_does_not_override: "Method does not override any base method",
     ErrorCode.missing_generic_parameters: "Missing type parameters for generic type",
     ErrorCode.disallowed_import: "Disallowed import",
+    ErrorCode.undefined_version: "Version in annotation is not defined",
+    ErrorCode.self_replace_version: "Version replaces itself",
+    ErrorCode.self_upgrade_version: "Version upgrades itself",
+    ErrorCode.cyclic_version_graph: "Version graph can not have cycles",
+    ErrorCode.duplicate_version: "Version is already defined",
 }
 
 

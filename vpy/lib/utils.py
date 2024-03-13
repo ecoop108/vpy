@@ -26,7 +26,6 @@ from vpy.typechecker.pyanalyze.value import (
 
 if TYPE_CHECKING:
     from vpy.typechecker.pyanalyze.name_check_visitor import NameCheckVisitor
-from vpy.lib import lookup
 from vpy.lib.lib_types import Environment, Field, Graph, Lenses, Version, VersionId
 import uuid
 
@@ -132,28 +131,34 @@ def graph(cls: ClassDef) -> Graph:
     Build a version graph for class `cls`.
     """
     return Graph(
-        graph={
-            v.name: v
-            for v in [
-                Version(d.keywords)
-                for d in cls.decorator_list
-                if isinstance(d, Call)
-                and isinstance(d.func, Name)
-                and d.func.id == "version"
-            ]
-        }
+        graph=[
+            Version(d.keywords)
+            for d in cls.decorator_list
+            if isinstance(d, Call)
+            and isinstance(d.func, Name)
+            and d.func.id == "version"
+        ]
     )
 
 
 def get_module_environment(mod_ast: Module):
+    from vpy.lib.lookup import (
+        field_lenses_lookup,
+        method_lenses_lookup,
+        methods_lookup,
+        base_versions,
+        fields_lookup,
+    )
+
     env = Environment()
     for node in mod_ast.body:
         if isinstance(node, ClassDef):
             g = graph(node)
-            env.get_lenses[node.name] = lookup.field_lenses_lookup(g, node)
+            env.get_lenses[node.name] = field_lenses_lookup(g, node)
             env.put_lenses[node.name] = Lenses()
-            env.method_lenses[node.name] = lookup.method_lenses_lookup(g, node)
+            env.method_lenses[node.name] = method_lenses_lookup(g, node)
             env.cls_ast[node.name] = deepcopy(node)
+            env.versions[node.name] = g
             for k in g.all():
                 if node.name not in env.methods:
                     env.methods[node.name] = {}
@@ -163,19 +168,19 @@ def get_module_environment(mod_ast: Module):
                     env.fields[node.name] = {}
                 env.methods[node.name][k.name] = {  # type: ignore
                     m  # type: ignore
-                    for m in lookup.methods_lookup(g, node, k.name)
+                    for m in methods_lookup(g, node, k.name)
                     if isinstance(m, FunctionDef) or m[0].name not in dir(object)
                 }
-                env.bases[node.name][k.name] = lookup.base_versions(g, node, k.name)
-                env.fields[node.name][k.name] = lookup.fields_lookup(g, node, k.name)
+                env.bases[node.name][k.name] = base_versions(g, node, k.name)
+                env.fields[node.name][k.name] = fields_lookup(g, node, k.name)
     return env
 
 
 def parse_module(module: ModuleType) -> tuple[Module, "NameCheckVisitor"]:
-    from vpy.typechecker.pyanalyze.ast_annotator import annotate_code
+    from vpy.typechecker.pyanalyze.ast_annotator import annotate_file
 
-    src = inspect.getsource(module)
-    tree, visitor = annotate_code(src)
+    # src = inspect.getsource(module)
+    tree, visitor = annotate_file(module.__file__)
     return tree, visitor
 
 
@@ -202,29 +207,30 @@ def is_lens(node: FunctionDef) -> bool:
     )
 
 
-def get_at(node: FunctionDef) -> VersionId:
+def get_at(node: FunctionDef) -> VersionId | None:
     """
-    Returns the version id where method `node` is defined.
+    Returns the version id where method `node` is defined or None if no decorator is provided.
     """
-    return VersionId(
-        [
-            d
-            for d in node.decorator_list
-            if isinstance(d, Call)
-            and isinstance(d.func, Name)
-            and d.func.id in ["get", "at", "put"]
-        ][0]
-        .args[0]
-        .value
-    )
+    version_decorators = [
+        d
+        for d in node.decorator_list
+        if isinstance(d, Call)
+        and isinstance(d.func, Name)
+        and d.func.id in ["get", "at", "put"]
+    ]
+    if len(version_decorators) == 0:
+        return None
+    return VersionId(version_decorators[0].args[0].value)
 
 
-def get_decorator(node: FunctionDef, dec_name: str) -> Call | None:
-    for dec in node.decorator_list:
-        if isinstance(dec, Call):
-            if isinstance(dec.func, Name) and dec.func.id == dec_name:
-                return dec
-    return None
+def get_decorators(node: FunctionDef, dec_name: str) -> list[Call]:
+    return [
+        dec
+        for dec in node.decorator_list
+        if isinstance(dec, Call)
+        and isinstance(dec.func, Name)
+        and dec.func.id == dec_name
+    ]
 
 
 def field_to_arg(field: Field) -> ast.arg:
