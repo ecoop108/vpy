@@ -572,15 +572,17 @@ def _get_attribute_from_mro(
                 except Exception:
                     pass
                 else:
-                    try:
-                        f = [
-                            m
-                            for m in ctx.env.methods[typ.__name__][ctx.version]
-                            if m.name == ctx.attr
-                        ][0]
-                        val = KnownValue()
-                    except Exception:
-                        val = AnyValue(AnySource.inference)
+                    if ctx.env:
+                        try:
+                            f = next(
+                                m
+                                for m in ctx.env.methods[typ.__name__][ctx.version]
+                                if m.name == ctx.attr
+                            )
+                            # TODO: Add value from f here
+                            val = KnownValue()
+                        except Exception:
+                            val = AnyValue(AnySource.inference)
                     try:
                         val = KnownValue(getattr(typ, ctx.attr))
                     except Exception:

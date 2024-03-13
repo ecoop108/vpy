@@ -1277,11 +1277,8 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         self._fill_method_cache()
 
         # set versioned environment
-        from vpy.lib.utils import get_module_environment
-
-        if self.tree is not None:
-            self.env = get_module_environment(self.tree)
         self.version = None
+        self.env = None
 
     def get_local_return_value(self, sig: MaybeSignature) -> Optional[Value]:
         val, saved_sig = self._argspec_to_retval.get(id(sig), (None, None))

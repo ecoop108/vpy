@@ -1,99 +1,161 @@
-from ast import ClassDef, Call, Name
+from ast import AST, ClassDef, Call, Constant, FunctionDef, List, Name
+from typing import Any, Dict
 
 from networkx import NetworkXNoCycle, find_cycle
+from vpy.typechecker.pyanalyze.checker import Checker
+from vpy.typechecker.pyanalyze.find_unused import UnusedObjectFinder
+from vpy.typechecker.pyanalyze.node_visitor import Failure, Replacement
 from vpy.typechecker.pyanalyze.value import Value
-from .name_check_visitor import NameCheckVisitor
+from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
 
 
 class VersionCheckVisitor(NameCheckVisitor):
+    def visit_Module(self, node) -> Value:
+        self.generic_visit(node)
+        if self.seen_errors:
+            return
+        from vpy.lib.utils import get_module_environment
+
+        self.env = get_module_environment(self.tree)
+        return super().visit(node)
+
     def visit_ClassDef(self, node) -> Value:
 
-        # TODO: Iterate over the decorator nodes instead of the version graph.
-        # The graph should only be created **after** these checks are complete.
         from vpy.lib.utils import get_decorators
         from vpy.lib.lib_types import Version
 
         version_dec = get_decorators(node, "version")
         versions = [(Version(d.keywords), d) for d in version_dec]
+        errors = False
         for idx, (version, v_node) in enumerate(versions):
-            if version.name in [w.name for (w, _) in versions[:idx]]:
-                self._show_error_if_checking(
-                    v_node,
-                    msg=f"Duplicate version definition: {version.name}",
+            name = next(kw for kw in v_node.keywords if kw.arg == "name")
+            if not isinstance(name.value, Constant) or not isinstance(
+                name.value.value, str
+            ):
+                self._show_error_if_collecting(
+                    name.value,
+                    msg=f"Version name must be a literal string: {name.value}",
+                    # TODO: Create new error code for this
                     error_code=ErrorCode.duplicate_version,
                 )
-            if version.name in version.replaces:
-                self._show_error_if_checking(
-                    v_node,
-                    msg=f"Version {version.name} can not replace itself.",
-                    error_code=ErrorCode.self_replace_version,
+                errors = True
+                return
+            elif name.value.value in [w.name for (w, _) in versions[:idx]]:
+                self._show_error_if_collecting(
+                    name.value,
+                    msg=f"Duplicate version name: {name.value.value}",
+                    error_code=ErrorCode.duplicate_version,
                 )
-            if version.name in version.upgrades:
-                self._show_error_if_checking(
-                    node,
-                    msg=f"Version {version.name} can not upgrade itself.",
-                    error_code=ErrorCode.self_upgrade_version,
-                )
-
-            for rel_kw in (
-                kw for kw in v_node.keywords if kw.arg in ("replaces", "upgrades")
-            ):
-                for w in rel_kw.value.elts:
-                    if w.value not in [version.name for (v, _) in versions]:
-                        self._show_error_if_checking(
+                errors = True
+            else:
+                upgrades = [kw for kw in v_node.keywords if kw.arg == "upgrades"]
+                replaces = [kw for kw in v_node.keywords if kw.arg == "replaces"]
+                for rel_kw in upgrades + replaces:
+                    if not isinstance(rel_kw.value, List):
+                        # TODO: Add error code for this
+                        self._show_error_if_collecting(
                             w,
-                            msg=f"Undefined version: {w.value}",
+                            msg=f"Related versions must be declared as a list: {rel_kw.value}",
                             error_code=ErrorCode.undefined_version,
                         )
+                        errors = True
+                        return
+                    else:
+                        for w in rel_kw.value.elts:
+                            if not isinstance(w, Constant) or not isinstance(
+                                w.value, str
+                            ):
+                                self._show_error_if_collecting(
+                                    w,
+                                    msg=f"Version names must be string literals",
+                                    error_code=ErrorCode.undefined_version,
+                                )
+                                errors = True
+                                return
 
-            for w in version.replaces + version.upgrades:
-                if w not in [version.name for (v, _) in versions]:
-                    self._show_error_if_checking(
-                        v_node,
-                        msg=f"Undefined version: {w}",
-                        error_code=ErrorCode.undefined_version,
-                    )
+                            else:
+                                if w.value not in [v.name for (v, _) in versions]:
+                                    self._show_error_if_collecting(
+                                        w,
+                                        msg=f"Undefined version: {w.value}",
+                                        error_code=ErrorCode.undefined_version,
+                                    )
+                                    errors = True
 
-        # if node.name in self.env.versions:
-        #     g = self.env.versions[node.name]
-        #     versions = g.all()
-        #     for idx, v in enumerate(versions):
-        #         if v.name in [w.name for w in versions[:idx]]:
-        #             self._show_error_if_checking(
-        #                 node,
-        #                 msg=f"Duplicate version definition: {v.name}",
-        #                 error_code=ErrorCode.duplicate_version,
-        #             )
-        #     for v in versions:
-        #         if v.name in v.replaces:
-        #             self._show_error_if_checking(
-        #                 node,
-        #                 msg=f"Version {v.name} can not replace itself.",
-        #                 error_code=ErrorCode.self_replace_version,
-        #             )
-        #         if v.name in v.upgrades:
-        #             self._show_error_if_checking(
-        #                 node,
-        #                 msg=f"Version {v.name} can not upgrade itself.",
-        #                 error_code=ErrorCode.self_upgrade_version,
-        #             )
-        #         for w in v.replaces + v.upgrades:
-        #             if w not in [v.name for v in versions]:
-        #                 self._show_error_if_checking(
-        #                     node,
-        #                     msg=f"Undefined version: {w}",
-        #                     error_code=ErrorCode.undefined_version,
-        #                 )
-        #     try:
-        #         find_cycle(g)
-        #         self._show_error_if_checking(
-        #             node, error_code=ErrorCode.cyclic_version_graph
-        #         )
-        #     except NetworkXNoCycle:
-        #         pass
+                                elif w.value == version.name:
+                                    self._show_error_if_collecting(
+                                        w,
+                                        msg=f"Version {version.name} can not be related to itself.",
+                                        error_code=ErrorCode.self_relation_version,
+                                    )
+                                    errors = True
 
-        return super().visit_ClassDef(node)
+                #     try:
+                #         find_cycle(g)
+                #         self._show_error_if_collecting(
+                #             node, error_code=ErrorCode.cyclic_version_graph
+                #         )
+                #     except NetworkXNoCycle:
+                #         pass
+        if not errors:
+            from vpy.lib.utils import graph
+
+            g = graph(node)
+            self.graph = versions
+            try:
+                cycle = find_cycle(g)
+                self._show_error_if_collecting(
+                    node,
+                    f"Cycle detected in version graph: {cycle}",
+                    ErrorCode.cyclic_version_graph,
+                )
+            except NetworkXNoCycle:
+                for fn in (n for n in node.body if isinstance(n, FunctionDef)):
+                    self.visit(fn)
 
     def visit_FunctionDef(self, node) -> Value:
-        return super().visit_FunctionDef(node)
+        from vpy.lib.utils import get_at, get_decorators
+
+        version_dec = (
+            get_decorators(node, "at")
+            + get_decorators(node, "get")
+            + get_decorators(node, "put")
+        )
+        # TODO: Create error code for this
+        if len(version_dec) == 0:
+            self._show_error_if_collecting(node, "Missing version annotation")
+            return
+        if len(version_dec) > 1:
+            self._show_error_if_collecting(node, "Multiple version annotations")
+            return
+        version_dec = version_dec[0]
+        version = get_at(node)
+
+        try:
+            v = next(v.name == version for (v, _) in self.versions)
+        except:
+            self._show_error_if_collecting(
+                version_dec,
+                f"Undefined version: {version}",
+                ErrorCode.undefined_version,
+            )
+
+    def _show_error_if_collecting(
+        self,
+        node: AST,
+        msg: str | None = None,
+        error_code: ErrorCode | None = None,
+        *,
+        replacement: Replacement | None = None,
+        detail: str | None = None,
+        extra_metadata: Dict[str, Any] | None = None,
+    ) -> None:
+        if self._is_collecting():
+            return super().show_error(
+                node,
+                msg,
+                error_code,
+                replacement=replacement,
+                detail=detail,
+            )

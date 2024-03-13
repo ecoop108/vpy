@@ -139,7 +139,9 @@ class Failure(TypedDict):
     absolute_filename: str
     code: NotRequired[Enum]
     lineno: NotRequired[int]
+    end_lineno: NotRequired[int]
     col_offset: NotRequired[int]
+    end_col_offset: NotRequired[int]
     context: NotRequired[str]
     message: NotRequired[str]
     extra_metadata: NotRequired[Dict[str, Any]]
@@ -628,9 +630,11 @@ class BaseNodeVisitor(ast.NodeVisitor):
 
         if node:
             lineno = node.lineno
+            end_lineno = node.end_lineno
             col_offset = node.col_offset
+            end_col_offset = node.end_col_offset
         else:
-            lineno = col_offset = None
+            lineno = end_lineno = col_offset = end_col_offset = None
 
         error: Failure = {
             "description": str(e),
@@ -645,13 +649,15 @@ class BaseNodeVisitor(ast.NodeVisitor):
             message += f" (code: {error_code.name})"
         if detail is not None:
             message += f"\n{detail}"
-        if lineno is not None:
+        if lineno is not None and end_lineno is not None:
             error["lineno"] = lineno
+            error["end_lineno"] = end_lineno
             message += f"\nIn {self.filename} at line {lineno}\n"
         else:
             message += f"\n In {self.filename}"
-        if col_offset is not None:
+        if col_offset is not None and end_col_offset is not None:
             error["col_offset"] = col_offset
+            error["end_col_offset"] = end_col_offset
         lines = self._lines()
 
         if obey_ignore and lineno is not None:

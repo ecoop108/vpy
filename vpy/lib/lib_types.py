@@ -105,14 +105,20 @@ class Graph(nx.DiGraph):
     def __init__(self, *, graph: list[Version] = []):
         super().__init__()
         for version in graph:
-            self.add_node(version)
+            self.add_node(version, label=version.name)
         for version in graph:
             for upgrade in version.upgrades:
-                if upgrade in graph:
-                    self.add_edge(version, graph[upgrade], label="upgrades")
-            for replace in version.replaces:
-                if replace in graph:
-                    self.add_edge(version, graph[replace], label="replaces")
+                try:
+                    uv = next(v for v in graph if v.name == upgrade)
+                    self.add_edge(version, uv, label="upgrades")
+                except:
+                    pass
+            for replace in graph:
+                try:
+                    rv = next(v for v in graph if v.name == replace)
+                    self.add_edge(version, rv, label="replaces")
+                except:
+                    pass
 
     def find_version(self, v: VersionId) -> Version | None:
         for version in self.nodes:
