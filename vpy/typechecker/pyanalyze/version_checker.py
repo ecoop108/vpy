@@ -18,7 +18,7 @@ class VersionCheckVisitor(NameCheckVisitor):
         from vpy.lib.utils import get_module_environment
 
         self.env = get_module_environment(self.tree)
-        return super().visit(node)
+        return super().generic_visit(node)
 
     def visit_ClassDef(self, node) -> Value:
 
@@ -114,6 +114,8 @@ class VersionCheckVisitor(NameCheckVisitor):
                 for fn in (n for n in node.body if isinstance(n, FunctionDef)):
                     self.visit(fn)
 
+            return super().visit_ClassDef(node)
+
     def visit_FunctionDef(self, node) -> Value:
         from vpy.lib.utils import get_at, get_decorators
 
@@ -133,7 +135,8 @@ class VersionCheckVisitor(NameCheckVisitor):
         version = get_at(node)
 
         try:
-            v = next(v.name == version for (v, _) in self.versions)
+            v = next(v for (v, _) in self.graph if v.name == version)
+            return super().visit_FunctionDef(node)
         except:
             self._show_error_if_collecting(
                 version_dec,

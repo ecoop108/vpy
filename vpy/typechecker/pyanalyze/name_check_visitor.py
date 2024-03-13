@@ -1751,7 +1751,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
         self.show_error(
             node,
-            f"Name {varname} is already defined",
+            f"Name {varname}{' in version ' + version if version is not None else ''} is already defined",
             error_code=ErrorCode.class_variable_redefinition,
         )
 

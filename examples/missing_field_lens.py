@@ -16,7 +16,6 @@ from vpy.decorators import at, get, version
 @version(name="init")
 @version(name="full", replaces=["init"])
 class Name:
-
     @at("init")
     def m(self) -> str:
         self.x = 1
