@@ -68,6 +68,18 @@ class FieldReference(NamedTuple):
 
 
 @dataclass
+class ClassEnvironment:
+    bases: dict[VersionId, set[VersionId]] = field(default_factory=dict)
+    fields: dict[VersionId, set[Field]] = field(default_factory=dict)
+    methods: dict[VersionId, set[FunctionDef]] = field(default_factory=dict)
+    get_lenses: Lenses = field(default_factory=dict)
+    put_lenses: Lenses = field(default_factory=dict)
+    method_lenses: Lenses = field(default_factory=dict)
+    cls_ast: ClassDef = field(default_factory=dict)
+    versions: "Graph" = field(default_factory=dict)
+
+
+@dataclass
 class Environment:
     bases: dict[str, dict[VersionId, set[VersionId]]] = field(default_factory=dict)
     fields: dict[str, dict[VersionId, set[Field]]] = field(default_factory=dict)

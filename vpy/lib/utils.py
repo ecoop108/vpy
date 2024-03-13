@@ -26,7 +26,15 @@ from vpy.typechecker.pyanalyze.value import (
 
 if TYPE_CHECKING:
     from vpy.typechecker.pyanalyze.name_check_visitor import NameCheckVisitor
-from vpy.lib.lib_types import Environment, Field, Graph, Lenses, Version, VersionId
+from vpy.lib.lib_types import (
+    ClassEnvironment,
+    Environment,
+    Field,
+    Graph,
+    Lenses,
+    Version,
+    VersionId,
+)
 import uuid
 
 
@@ -141,7 +149,7 @@ def graph(cls: ClassDef) -> Graph:
     )
 
 
-def get_module_environment(mod_ast: Module):
+def get_class_environment(cls_ast: ClassDef):
     from vpy.lib.lookup import (
         field_lenses_lookup,
         method_lenses_lookup,
@@ -150,29 +158,38 @@ def get_module_environment(mod_ast: Module):
         fields_lookup,
     )
 
+    env = ClassEnvironment()
+    g = graph(cls_ast)
+    env.get_lenses = field_lenses_lookup(g, cls_ast)
+    env.put_lenses = Lenses()
+    env.method_lenses = method_lenses_lookup(g, cls_ast)
+    env.cls_ast = deepcopy(cls_ast)
+    env.versions = g
+    for k in g.all():
+        env.methods[k.name] = {  # type: ignore
+            m  # type: ignore
+            for m in methods_lookup(g, cls_ast, k.name)
+            if isinstance(m, FunctionDef) or m[0].name not in dir(object)
+        }
+        env.bases[k.name] = base_versions(g, cls_ast, k.name)
+        env.fields[k.name] = fields_lookup(g, cls_ast, k.name)
+    return env
+
+
+def get_module_environment(mod_ast: Module):
     env = Environment()
     for node in mod_ast.body:
         if isinstance(node, ClassDef):
             g = graph(node)
-            env.get_lenses[node.name] = field_lenses_lookup(g, node)
-            env.put_lenses[node.name] = Lenses()
-            env.method_lenses[node.name] = method_lenses_lookup(g, node)
+            cls_env = get_class_environment(node)
+            env.get_lenses[node.name] = cls_env.get_lenses
+            env.put_lenses[node.name] = cls_env.put_lenses
+            env.method_lenses[node.name] = cls_env.method_lenses
             env.cls_ast[node.name] = deepcopy(node)
             env.versions[node.name] = g
-            for k in g.all():
-                if node.name not in env.methods:
-                    env.methods[node.name] = {}
-                if node.name not in env.bases:
-                    env.bases[node.name] = {}
-                if node.name not in env.fields:
-                    env.fields[node.name] = {}
-                env.methods[node.name][k.name] = {  # type: ignore
-                    m  # type: ignore
-                    for m in methods_lookup(g, node, k.name)
-                    if isinstance(m, FunctionDef) or m[0].name not in dir(object)
-                }
-                env.bases[node.name][k.name] = base_versions(g, node, k.name)
-                env.fields[node.name][k.name] = fields_lookup(g, node, k.name)
+            env.methods[node.name] = cls_env.methods
+            env.bases[node.name] = cls_env.bases
+            env.fields[node.name] = cls_env.fields
     return env
 
 

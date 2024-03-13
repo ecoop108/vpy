@@ -1430,9 +1430,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             )
         # Recover memory used for the AST. We keep the visitor object around later in order
         # to show ClassAttributeChecker errors, but those don't need the full AST.
-        self.tree = None
-        self._lines.__cached_per_instance_cache__.clear()
-        self._argspec_to_retval.clear()
+        # self.tree = None
+        # self._lines.__cached_per_instance_cache__.clear()
+        # self._argspec_to_retval.clear()
         end_time = qcore.utime()
         message = f"{self.filename} took {(end_time - start_time) / qcore.SECOND:.2f} s"
         self.logger.log(logging.INFO, message)
