@@ -9,13 +9,9 @@ from vpy.lib.lib_types import Environment, VersionId
 from vpy.lib.transformers.cls import ClassTransformer
 from vpy.lib.transformers.module import ModuleTransformer
 from vpy.lib.utils import parse_class, get_module_environment, parse_module
-from vpy.typechecker.checker import check_cls, check_module
 
 
 def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
-    status, err = check_module(module)
-    if not status:
-        raise Exception(err)
     mod_ast, _ = parse_module(module)
     sl_mod = ModuleTransformer(v).visit(mod_ast)
 

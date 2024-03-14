@@ -6,7 +6,6 @@ from vpy.lib import lookup
 from vpy.lib.lib_types import Environment, Lenses, VersionId
 from vpy.lib.transformers.cls import ClassStrictTransformer, ClassTransformer
 from vpy.lib.utils import get_module_environment, graph
-from vpy.typechecker.checker import check_cls, check_module
 
 
 class ModuleStrictTransformer(ast.NodeTransformer):

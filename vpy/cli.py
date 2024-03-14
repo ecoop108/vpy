@@ -9,7 +9,6 @@ from vpy.lib.lib_types import VersionId
 from vpy.lib.transformers.module import ModuleStrictTransformer, ModuleTransformer
 from vpy.lib.transformers.toolkit import AddVersionTransformer
 from vpy.lib.utils import parse_module, graph
-from vpy.typechecker.checker import check_module
 
 
 # TODO: Refactor this code, read errors from namecheckvisitor
@@ -54,14 +53,6 @@ def target(file, version: VersionId, strict=False):
     if strict:
         mod_ast = ModuleStrictTransformer(version).visit(mod_ast)
     else:
-        status, err = check_module(module)
-        if not status:
-            import sys
-
-            for error in err:
-                print(error, file=sys.stderr)
-            exit(-1)
-            # raise Exception(err)
         mod_ast = ModuleTransformer(version).visit(mod_ast)
     slices = [ast.unparse(ast.fix_missing_locations(mod_ast))]
     print("\n".join(slices))
