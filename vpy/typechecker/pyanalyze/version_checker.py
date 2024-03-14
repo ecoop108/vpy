@@ -1,32 +1,25 @@
-from ast import AST, Constant, FunctionDef, List, Module
-from logging import CRITICAL
-import logging
-from types import ModuleType
-from typing import Any, Dict, Mapping
+from ast import AST, ClassDef, Constant, FunctionDef, List
+from typing import Any, Dict
 
 from networkx import NetworkXNoCycle, find_cycle
-from vpy.typechecker.pyanalyze.checker import Checker
-from vpy.typechecker.pyanalyze.find_unused import UnusedObjectFinder
-from vpy.typechecker.pyanalyze.name_check_visitor import (
-    CallSiteCollector,
-    ClassAttributeChecker,
+from vpy.typechecker.pyanalyze.node_visitor import (
+    _FakeNode,
+    BaseNodeVisitor,
+    Failure,
+    Replacement,
 )
-from vpy.typechecker.pyanalyze.node_visitor import Failure, Replacement
-from vpy.typechecker.pyanalyze.value import Value
-from .name_check_visitor import NameCheckVisitor
+from vpy.typechecker.pyanalyze.value import CanAssignError, Value
+from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
 
 
-class VersionCheckVisitor(NameCheckVisitor):
+class VersionCheckVisitor(BaseNodeVisitor):
     def visit_Module(self, node) -> Value:
-        self.generic_visit(node)
+        for cls in node.body:
+            if isinstance(cls, ClassDef):
+                self.visit_ClassDef(cls)
         if self.seen_errors:
             return
-        from vpy.lib.utils import get_module_environment
-
-        self.env = get_module_environment(self.tree)
-
-        return super().generic_visit(node)
 
     def visit_ClassDef(self, node) -> Value:
 
@@ -40,7 +33,7 @@ class VersionCheckVisitor(NameCheckVisitor):
             if not isinstance(name.value, Constant) or not isinstance(
                 name.value.value, str
             ):
-                self._show_error_if_collecting(
+                self.show_error(
                     name.value,
                     msg=f"Version name must be a literal string: {name.value}",
                     # TODO: Create new error code for this
@@ -48,7 +41,7 @@ class VersionCheckVisitor(NameCheckVisitor):
                 )
                 return
             elif name.value.value in [w.name for (w, _) in versions[:idx]]:
-                self._show_error_if_collecting(
+                self.show_error(
                     name.value,
                     msg=f"Duplicate version name: {name.value.value}",
                     error_code=ErrorCode.duplicate_version,
@@ -60,7 +53,7 @@ class VersionCheckVisitor(NameCheckVisitor):
                 for rel_kw in upgrades + replaces:
                     if not isinstance(rel_kw.value, List):
                         # TODO: Add error code for this
-                        self._show_error_if_collecting(
+                        self.show_error(
                             rel_kw,
                             msg=f"Related versions must be declared as a list: {rel_kw.value}",
                             error_code=ErrorCode.undefined_version,
@@ -71,7 +64,7 @@ class VersionCheckVisitor(NameCheckVisitor):
                             if not isinstance(w, Constant) or not isinstance(
                                 w.value, str
                             ):
-                                self._show_error_if_collecting(
+                                self.show_error(
                                     w,
                                     msg=f"Version names must be string literals",
                                     error_code=ErrorCode.undefined_version,
@@ -80,14 +73,14 @@ class VersionCheckVisitor(NameCheckVisitor):
 
                             else:
                                 if w.value not in [v.name for (v, _) in versions]:
-                                    self._show_error_if_collecting(
+                                    self.show_error(
                                         w,
                                         msg=f"Undefined version: {w.value}",
                                         error_code=ErrorCode.undefined_version,
                                     )
                                     return
                                 elif w.value == version.name:
-                                    self._show_error_if_collecting(
+                                    self.show_error(
                                         w,
                                         msg=f"Version {version.name} can not be related to itself.",
                                         error_code=ErrorCode.self_relation_version,
@@ -99,7 +92,7 @@ class VersionCheckVisitor(NameCheckVisitor):
 
             g = graph(node)
             cycle = find_cycle(g)
-            self._show_error_if_collecting(
+            self.show_error(
                 node,
                 f"Cycle detected in version graph: {cycle}",
                 ErrorCode.cyclic_version_graph,
@@ -111,8 +104,6 @@ class VersionCheckVisitor(NameCheckVisitor):
         for fn in (n for n in node.body if isinstance(n, FunctionDef)):
             self.visit(fn)
 
-        return super().visit_ClassDef(node)
-
     def visit_FunctionDef(self, node) -> Value:
         from vpy.lib.utils import get_at, get_decorators
 
@@ -123,10 +114,10 @@ class VersionCheckVisitor(NameCheckVisitor):
         )
         # TODO: Create error code for this
         if len(version_dec) == 0:
-            self._show_error_if_collecting(node, "Missing version annotation")
+            self.show_error(node, "Missing version annotation")
             return
         if len(version_dec) > 1:
-            self._show_error_if_collecting(node, "Multiple version annotations")
+            self.show_error(node, "Multiple version annotations")
             return
         version_dec = version_dec[0]
         version = get_at(node)
@@ -135,86 +126,52 @@ class VersionCheckVisitor(NameCheckVisitor):
             v = next(v for (v, _) in self.graph if v.name == version)
             return super().visit_FunctionDef(node)
         except StopIteration:
-            self._show_error_if_collecting(
+            self.show_error(
                 version_dec,
                 f"Undefined version: {version}",
                 ErrorCode.undefined_version,
             )
 
-    def _show_error_if_collecting(
-        self,
-        node: AST,
-        msg: str | None = None,
-        error_code: ErrorCode | None = None,
-        *,
-        replacement: Replacement | None = None,
-        detail: str | None = None,
-        extra_metadata: Dict[str, Any] | None = None,
-    ) -> None:
-        if self._is_collecting():
-            return super().show_error(
-                node,
-                msg,
-                error_code,
-                replacement=replacement,
-                detail=detail,
-            )
 
+class LensCheckVisitor(BaseNodeVisitor):
 
-class LensCheckVisitor(VersionCheckVisitor):
-    def __init__(
-        self,
-        filename: str,
-        contents: str,
-        tree: Module,
-        *,
-        settings: Mapping[ErrorCode, bool] | None = None,
-        fail_after_first: bool = False,
-        verbosity: int = logging.CRITICAL,
-        unused_finder: UnusedObjectFinder | None = None,
-        module: ModuleType | None = None,
-        attribute_checker: ClassAttributeChecker | None = None,
-        collector: CallSiteCollector | None = None,
-        annotate: bool = True,
-        add_ignores: bool = False,
-        checker: Checker,
-        is_code_only: bool = False,
-    ) -> None:
-        super().__init__(
-            filename,
-            contents,
-            tree,
-            settings=settings,
-            fail_after_first=fail_after_first,
-            verbosity=verbosity,
-            unused_finder=unused_finder,
-            module=module,
-            attribute_checker=attribute_checker,
-            collector=collector,
-            annotate=annotate,
-            add_ignores=add_ignores,
-            checker=checker,
-            is_code_only=is_code_only,
+    def check(self) -> list[Failure]:
+        from vpy.lib.utils import get_module_environment
+
+        self.annotate = True
+        version_check_visitor = VersionCheckVisitor(
+            filename=self.filename,
+            contents=self.contents,
+            tree=self.tree,
+            settings=self.settings,
         )
-
-    def check(self, ignore_missing_module: bool = False) -> list[Failure]:
-        super().visit(self.tree)
-        if self.seen_errors:
-            return self.all_failures
-        super(VersionCheckVisitor, self).check(ignore_missing_module)
-        if self.seen_errors:
-            return self.all_failures
-        self.visit(self.tree)
-        self.tree = None
-        self._lines.__cached_per_instance_cache__.clear()
-        self._argspec_to_retval.clear()
-        return self.all_failures
+        version_check_visitor.check
+        if version_check_visitor.all_failures:
+            return version_check_visitor.all_failures
+        kwargs = NameCheckVisitor.prepare_constructor_kwargs({})
+        options = kwargs["checker"].options
+        with ClassAttributeChecker(enabled=True, options=options) as attribute_checker:
+            self.name_check_visitor = NameCheckVisitor(
+                filename=self.filename,
+                contents=self.contents,
+                tree=self.tree,
+                settings=self.settings,
+                annotate=True,
+                attribute_checker=attribute_checker,
+                **kwargs,
+            )
+            # name_check_visitor.env = get_module_environment(self.tree)
+            self.name_check_visitor.env = get_module_environment(self.tree)
+            self.name_check_visitor.check()
+            if self.name_check_visitor.all_failures:
+                self.all_failures = self.name_check_visitor.all_failures
+            self.env = get_module_environment(self.tree)
+            return super().check()
 
     def visit_ClassDef(self, node) -> Value:
-        super().visit_ClassDef(node)
-        if self.seen_errors:
-            return
         from vpy.lib.utils import graph, get_class_environment, get_at
+        from vpy.lib.lookup import _method_lookup
+        from vpy.lib.lib_types import Graph
 
         cls_env = get_class_environment(node)
         g = graph(node)
@@ -228,7 +185,11 @@ class LensCheckVisitor(VersionCheckVisitor):
             }
             for m in methods.union(lenses_methods):
                 if isinstance(m, tuple):
-                    assert False
+                    self.show_error(
+                        m[0],
+                        f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
+                    )
+                    return
                 mver = get_at(m)
                 if mver != v.name and mver not in cls_env.bases[v.name]:
                     for field in cls_env.fields[mver]:
@@ -236,8 +197,72 @@ class LensCheckVisitor(VersionCheckVisitor):
                             field.name not in cls_env.get_lenses[mver]
                             or v.name not in cls_env.get_lenses[mver][field.name]
                         ):
-                            self._show_error_if_collecting(
+                            self.show_error(
                                 m,
-                                f"No path for field {field.name} between versions {mver} and {v.name}",
+                                f"No path for field {field.name} in method {m.name} between versions {mver} and {v.name}",
                             )
                             return
+
+        method_lenses = self.env.method_lenses[node.name]
+
+        for v, v_lenses in method_lenses.items():
+            for method, m_lenses in v_lenses.items():
+                for t, lens in m_lenses.items():
+                    lens_node = lens.node
+                    if lens_node is None:
+                        continue
+                    m_v = _method_lookup(
+                        Graph(graph=[g.find_version(v)]),
+                        node,
+                        method,
+                        v,
+                    )
+                    m_t = _method_lookup(
+                        Graph(graph=[g.find_version(t)]),
+                        node,
+                        method,
+                        t,
+                    )
+                    if m_v is not None and m_t is not None:
+                        # Check that signature of method and lens match
+                        self.__check_lens_method_signature(lens_node, m_v, v, t)
+
+    def __check_lens_method_signature(self, lens: FunctionDef, m: FunctionDef, v, t):
+        lens_sig = self.name_check_visitor.visit(lens).signature
+        m_sig = self.name_check_visitor.visit(m).signature
+        # TODO: Check that lens has self and f parameters
+        if "f" in lens_sig.parameters:
+            del lens_sig.parameters["f"]
+        if isinstance(
+            lens_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
+        ):
+            self.show_error(
+                lens,
+                f"""Wrong signature in lens of method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
+    def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
+            )
+
+    #     lens_params = list(lens_sig.parameters.values())[2:]
+    #     m_params = list(m_sig.parameters.values())[1:]
+    #     if len(lens_params) != len(m_params):
+    #         self.show_error(
+    #             lens,
+    #             f"""Wrong signature in lens of method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
+    # def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
+    #         )
+    #     else:
+    #         for p0, p1, pn in zip(lens_params, m_params, lens.args.args[2:]):
+    #             if p0.annotation.is_assignable(p1.annotation, self.name_check_visitor):
+    #                 self.show_error(
+    #                     pn,
+    #                     f"""Incompatible type for argument {p0.name} in signature of lens for method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
+    # def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
+    #                 )
+    #     if lens_sig.return_value.is_assignable(
+    #         m_sig.return_value, self.name_check_visitor
+    #     ):
+    #         self.show_error(
+    #             lens_sig,
+    #             f"""Incompatible return type in signature of lens for method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
+    # def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
+    #         )
