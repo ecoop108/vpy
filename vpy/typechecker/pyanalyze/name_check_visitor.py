@@ -1787,7 +1787,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             ):
                 if defining_scope.scope_object is not None:
                     self._maybe_record_usage(
-                        defining_scope.scope_object, node.id, value
+                        defining_scope.scope_object, self.version, node.id, value
                     )
         if value is UNINITIALIZED_VALUE:
             if suppress_errors or node.id in self.options.get_value_for(ExtraBuiltins):

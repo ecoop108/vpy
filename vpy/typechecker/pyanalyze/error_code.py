@@ -133,11 +133,11 @@ DISABLED_BY_DEFAULT = {
     ErrorCode.missing_f,
     ErrorCode.bare_ignore,
     ErrorCode.too_many_positional_args,
-    ErrorCode.attribute_is_never_set,
     # TODO: turn this on
     ErrorCode.implicit_reexport,
     ErrorCode.incompatible_override,
     ErrorCode.missing_generic_parameters,
+    ErrorCode.missing_return,
 }
 
 ERROR_DESCRIPTION = {
