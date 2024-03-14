@@ -24,14 +24,15 @@ class Name:
     @at("full")
     def t(self) -> str:
         self.y = 2
+        self.m() / 2
         return ""
 
     # Uncomment the following lines to fix the code.
 
-    # @get("init", "full", "y")
-    # def lens_y(self):
-    #     return self.x + 1
+    @get("init", "full", "y")
+    def lens_y(self):
+        return self.x + 1
 
-    # @get("full", "init", "x")
-    # def lens_x(self):
-    #     return self.y + 1
+    @get("full", "init", "x")
+    def lens_x(self):
+        return self.y + 1

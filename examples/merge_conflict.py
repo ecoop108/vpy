@@ -4,7 +4,7 @@ from vpy.decorators import at, get, run, version
 @version(name="init")
 @version(name="last", upgrades=["init"])
 @version(name="full", upgrades=["init"])
-@version(name="merge", replaces=["init", "full", "last"])
+# @version(name="merge", replaces=["init", "full", "last"])
 class C:
     """Version `init` introduces no methods. Then, branches `last` and `full` introduce separate definitions of method `m`.
     Version `merge` joins versions `full` and `last` as a replacement for version `init`.
@@ -16,13 +16,13 @@ class C:
     @at("last")
     def b(self) -> str: ...
 
-    @at("merge")
-    def b(self) -> str:
-        """Version `merge` must introduce a definition of `m` to solve the conflict between the two branhces, otherwise the
-        program does not typecheck.
-        This definition is then available to clients in versions `init`, `full`, and `last`.
-        """
-        ...
+    # @at("merge")
+    # def b(self) -> str:
+    #     """Version `merge` must introduce a definition of `m` to solve the conflict between the two branhces, otherwise the
+    #     program does not typecheck.
+    #     This definition is then available to clients in versions `init`, `full`, and `last`.
+    #     """
+    #     ...
 
 
 @version(name="init")

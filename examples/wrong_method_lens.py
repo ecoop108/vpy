@@ -12,7 +12,7 @@ from vpy.decorators import at, get, version
 class Name:
 
     @at("init")
-    def m(self, x) -> bool:
+    def m(self, x: int) -> bool:
         return True
 
     # The signature in version `full` is different from version `init`. As such, the lens for this method (`init` => `full`) is
@@ -26,5 +26,5 @@ class Name:
     #
     # To fix, add the `x` parameter and change the return type annotation to `bool`, as suggested in the error message.
     @get("init", "full", "m")
-    def lens_m(self, f) -> int:
+    def lens_m(self, f, x: int) -> bool:
         return not f()
