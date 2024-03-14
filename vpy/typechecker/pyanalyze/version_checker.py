@@ -185,10 +185,11 @@ class LensCheckVisitor(BaseNodeVisitor):
             }
             for m in methods.union(lenses_methods):
                 if isinstance(m, tuple):
-                    self.show_error(
-                        m[0],
-                        f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
-                    )
+                    if any(get_at(n) != get_at(m[0]) for n in m):
+                        self.show_error(
+                            m[0],
+                            f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
+                        )
                     return
                 mver = get_at(m)
                 mdef = _method_lookup(
@@ -224,7 +225,9 @@ class LensCheckVisitor(BaseNodeVisitor):
                         # Check that signature of method and lens match
                         self.__check_lens_method_signature(lens_node, m_v, v, t)
 
-    def __check_missing_field_lens(self, m: FunctionDef, mver, v, cls_env):
+    def __check_missing_field_lens(
+        self, m: FunctionDef, mver: "VersionId", v: "VersionId", cls_env: "Environment"
+    ):
         if mver != v and mver not in cls_env.bases[v]:
             for field in cls_env.fields[mver]:
                 if (
@@ -233,7 +236,7 @@ class LensCheckVisitor(BaseNodeVisitor):
                 ):
                     self.show_error(
                         m,
-                        f"No path for field {field.name} in method {m.name} between versions {mver} and {v.name}",
+                        f"No path for field {field.name} in method {m.name} between versions {mver} and {v}",
                     )
 
     def __check_missing_method_lens(
@@ -242,24 +245,25 @@ class LensCheckVisitor(BaseNodeVisitor):
         """Check for missing method lens between the introduced definition `mdef` and its corresponding versioned definition `m` (which will be used by clients in the context of get_at(m))"""
         from vpy.lib.lookup import get_at
 
+        if mdef is None:
+            return
         mdef_v = get_at(mdef)
         m_v = get_at(m)
-        if mdef is not None and mdef_v != m_v:
-            mdef_sig = self.name_check_visitor.visit(mdef).signature
-            m_sig = self.name_check_visitor.visit(m).signature
-            if (
-                cls_env.method_lenses.find_lens(
-                    v_from=mdef_v, v_to=m_v, field_name=m.name
-                )
-                is None
+        if mdef_v == m_v:
+            return
+        mdef_sig = self.name_check_visitor.visit(mdef).signature
+        m_sig = self.name_check_visitor.visit(m).signature
+        if (
+            cls_env.method_lenses.find_lens(v_from=mdef_v, v_to=m_v, field_name=m.name)
+            is None
+        ):
+            if isinstance(
+                mdef_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
             ):
-                if isinstance(
-                    mdef_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
-                ):
-                    self.show_error(
-                        m,
-                        f"""Missing lens from version {mdef_v}: signatures do not match""",
-                    )
+                self.show_error(
+                    m,
+                    f"""Missing lens from version {mdef_v}: signatures do not match""",
+                )
 
     def __check_lens_method_signature(self, lens: FunctionDef, m: FunctionDef, v, t):
         lens_sig = self.name_check_visitor.visit(lens).signature
