@@ -8,7 +8,7 @@ from vpy.decorators import at, get, version
 @version(name="2", replaces=["1"])
 class C:
     # Method display does not require lenses since its signature is the same, which means clients from 1 can use the
-    # def1ion of 2 without their code breaking.
+    # definition of 2 without their code breaking.
     @at("1")
     def m(self) -> str: ...
 
@@ -19,7 +19,8 @@ class C:
 @version(name="1")
 @version(name="2", upgrades=["1"])
 class C:
-    # In this case, since version 2 upgrades version 1, the changes are not backported to clients in version 1 so the signature of `m` can change freely.
+    # In this case, version 2 upgrades version 1. As such, the changes are not backported to clients in version 1 so the
+    # signature of `m` can change freely.
     @at("1")
     def m(self) -> str: ...
 

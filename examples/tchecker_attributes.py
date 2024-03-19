@@ -27,19 +27,3 @@ class C:
     def m(self):
         self.z = ...
         self.x
-
-
-@version(name="1")
-@version(name="2", upgrades=["1"])
-class C:
-    # In this case, method `n` is wrongly typed since method `m` at version 1 returns an object of type `str`, not
-    # `bool`.
-    @at("1")
-    def m(self) -> str: ...
-
-    @at("2")
-    def m(self) -> bool: ...
-
-    @at("1")
-    def n(self) -> str:
-        return self.m()
