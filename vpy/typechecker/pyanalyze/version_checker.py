@@ -126,7 +126,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
 
         try:
             v = next(v for (v, _) in self.graph if v.name == version)
-            return super().visit_FunctionDef(node)
+            return
         except StopIteration:
             self.show_error(
                 version_dec,

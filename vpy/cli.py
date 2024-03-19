@@ -19,10 +19,10 @@ def graph_versions(file) -> list[list[dict[str, list[dict]]]]:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module_ast = ast.parse(inspect.getsource(module))
-    versions = []
+    versions = {}
     for node in module_ast.body:
         if isinstance(node, ast.ClassDef):
-            versions.append(graph(node).tree())
+            versions[node.name] = graph(node).tree()
     return versions
 
 
@@ -118,7 +118,8 @@ def cli_main():
         exit()
 
     elif args.graph:
-        print("\n".join([json.dumps(v) for l in graph_versions(args.input) for v in l]))
+        print(json.dumps(graph_versions(args.input)))
+        exit()
 
     if args.target:
         target(args.input, VersionId(args.target), strict=args.strict)
