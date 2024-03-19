@@ -6,6 +6,7 @@ from vpy.typechecker.pyanalyze.node_visitor import (
     BaseNodeVisitor,
     Failure,
 )
+from vpy.typechecker.pyanalyze.signature import BoundMethodSignature
 from vpy.typechecker.pyanalyze.value import CanAssignError, Value
 from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
@@ -36,7 +37,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
             ):
                 self.show_error(
                     name.value,
-                    msg=f"Version name must be a literal string: {name.value}",
+                    e=f"Version name must be a literal string: {name.value}",
                     # TODO: Create new error code for this
                     error_code=ErrorCode.duplicate_version,
                 )
@@ -44,7 +45,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
             elif name.value.value in [w.name for (w, _) in versions[:idx]]:
                 self.show_error(
                     name.value,
-                    msg=f"Duplicate version name: {name.value.value}",
+                    e=f"Duplicate version name: {name.value.value}",
                     error_code=ErrorCode.duplicate_version,
                 )
                 return
@@ -56,7 +57,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
                         # TODO: Add error code for this
                         self.show_error(
                             rel_kw,
-                            msg=f"Related versions must be declared as a list: {rel_kw.value}",
+                            e=f"Related versions must be declared as a list: {rel_kw.value}",
                             error_code=ErrorCode.undefined_version,
                         )
                         return
@@ -67,7 +68,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
                             ):
                                 self.show_error(
                                     w,
-                                    msg=f"Version names must be string literals",
+                                    e=f"Version names must be string literals",
                                     error_code=ErrorCode.undefined_version,
                                 )
                                 return
@@ -76,14 +77,14 @@ class VersionCheckVisitor(BaseNodeVisitor):
                                 if w.value not in [v.name for (v, _) in versions]:
                                     self.show_error(
                                         w,
-                                        msg=f"Undefined version: {w.value}",
+                                        e=f"Undefined version: {w.value}",
                                         error_code=ErrorCode.undefined_version,
                                     )
                                     return
                                 elif w.value == version.name:
                                     self.show_error(
                                         w,
-                                        msg=f"Version {version.name} can not be related to itself.",
+                                        e=f"Version {version.name} can not be related to itself.",
                                         error_code=ErrorCode.self_relation_version,
                                     )
                                     return
@@ -146,7 +147,7 @@ class LensCheckVisitor(BaseNodeVisitor):
             tree=self.tree,
             settings=self.settings,
         )
-        version_check_visitor.check
+        version_check_visitor.check()
         if version_check_visitor.all_failures:
             return version_check_visitor.all_failures
         kwargs = NameCheckVisitor.prepare_constructor_kwargs({})
@@ -268,8 +269,12 @@ class LensCheckVisitor(BaseNodeVisitor):
                 )
 
     def __check_lens_method_signature(self, lens: FunctionDef, m: FunctionDef, v, t):
-        lens_sig = self.name_check_visitor.visit(lens).signature
-        m_sig = self.name_check_visitor.visit(m).signature
+        lens_sig = self.name_check_visitor.signature_from_value(
+            self.name_check_visitor.visit(lens)
+        )
+        m_sig = self.name_check_visitor.signature_from_value(
+            self.name_check_visitor.visit(m)
+        )
         # TODO: Check that lens has self and f parameters
         if "f" in lens_sig.parameters:
             del lens_sig.parameters["f"]

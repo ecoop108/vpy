@@ -2060,7 +2060,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         from vpy.lib.lookup import get_at
 
         self.version = get_at(node)
-        potential_function = self._get_potential_function(node)
+        potential_function = None # self._get_potential_function(node)
         with self.compute_function_info(
             node,
             # If we set the current_class in the collecting phase,
