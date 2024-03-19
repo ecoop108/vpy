@@ -345,7 +345,13 @@ def _unwrap_value_from_typed(result: Value, typ: type, ctx: AttrContext) -> Valu
     elif qcore.inspection.is_classmethod(cls_val):
         return result
     elif inspect.ismethod(cls_val):
-        return UnboundMethodValue(ctx.attr, ctx.root_composite, typevars=typevars)
+        return UnboundMethodValue(
+            ctx.attr,
+            ctx.root_composite,
+            typevars=typevars,
+            version=ctx.version,
+            env=ctx.env,
+        )
     elif inspect.isfunction(cls_val):
         # either a staticmethod or an unbound method
         try:
@@ -354,7 +360,11 @@ def _unwrap_value_from_typed(result: Value, typ: type, ctx: AttrContext) -> Valu
             # probably a super call; assume unbound method
             if ctx.attr != "__new__":
                 return UnboundMethodValue(
-                    ctx.attr, ctx.root_composite, typevars=typevars
+                    ctx.attr,
+                    ctx.root_composite,
+                    typevars=typevars,
+                    version=ctx.version,
+                    env=ctx.env,
                 )
             else:
                 # __new__ is implicitly a staticmethod
@@ -362,17 +372,35 @@ def _unwrap_value_from_typed(result: Value, typ: type, ctx: AttrContext) -> Valu
         if isinstance(descriptor, staticmethod) or ctx.attr == "__new__":
             return result
         else:
-            return UnboundMethodValue(ctx.attr, ctx.root_composite, typevars=typevars)
+            return UnboundMethodValue(
+                ctx.attr,
+                ctx.root_composite,
+                typevars=typevars,
+                version=ctx.version,
+                env=ctx.env,
+            )
     elif isinstance(cls_val, (MethodDescriptorType, SlotWrapperType)):
         # built-in method; e.g. scope_lib.tests.SimpleDatabox.get
-        return UnboundMethodValue(ctx.attr, ctx.root_composite, typevars=typevars)
+        return UnboundMethodValue(
+            ctx.attr,
+            ctx.root_composite,
+            typevars=typevars,
+            version=ctx.version,
+            env=ctx.env,
+        )
     elif (
         _static_hasattr(cls_val, "decorator")
         and _static_hasattr(cls_val, "instance")
         and not isinstance(cls_val.instance, type)
     ):
         # non-static method
-        return UnboundMethodValue(ctx.attr, ctx.root_composite, typevars=typevars)
+        return UnboundMethodValue(
+            ctx.attr,
+            ctx.root_composite,
+            typevars=typevars,
+            version=ctx.version,
+            env=ctx.env,
+        )
     elif asynq.is_async_fn(cls_val):
         # static or class method
         return result
@@ -448,7 +476,9 @@ def _get_attribute_from_known(obj: object, ctx: AttrContext) -> Value:
         )
         and isinstance(ctx.root_value, AnnotatedValue)
     ):
-        result = UnboundMethodValue(ctx.attr, ctx.root_composite)
+        result = UnboundMethodValue(
+            ctx.attr, ctx.root_composite, version=ctx.version, env=ctx.env
+        )
     if safe_isinstance(obj, type):
         result = set_self(result, TypedValue(obj))
     if isinstance(obj, (types.ModuleType, type)):
@@ -471,7 +501,11 @@ def _get_attribute_from_unbound(
     except AttributeError:
         return UNINITIALIZED_VALUE
     result = UnboundMethodValue(
-        root_value.attr_name, root_value.composite, secondary_attr_name=ctx.attr
+        root_value.attr_name,
+        root_value.composite,
+        secondary_attr_name=ctx.attr,
+        version=ctx.version,
+        env=ctx.env,
     )
     ctx.record_usage(type(method), result)
     return result
@@ -574,19 +608,24 @@ def _get_attribute_from_mro(
                 else:
                     if ctx.env:
                         try:
+                            from vpy.lib.lookup import get_at
+
                             f = next(
                                 m
                                 for m in ctx.env.methods[typ.__name__][ctx.version]
                                 if m.name == ctx.attr
                             )
                             # TODO: Add value from f here
-                            val = KnownValue()
+                            f_ver = get_at(f)
+                            f_val = base_dict[ctx.attr].__functions[f_ver]
+                            return KnownValue(f_val), base_cls, True
                         except Exception:
                             val = AnyValue(AnySource.inference)
-                    try:
-                        val = KnownValue(getattr(typ, ctx.attr))
-                    except Exception:
-                        val = AnyValue(AnySource.inference)
+                    else:
+                        try:
+                            val = KnownValue(getattr(typ, ctx.attr))
+                        except Exception:
+                            val = AnyValue(AnySource.inference)
                     return val, base_cls, True
 
                 if typeshed_type is not UNINITIALIZED_VALUE:

@@ -166,7 +166,9 @@ class LensCheckVisitor(BaseNodeVisitor):
             self.name_check_visitor.check()
             if self.name_check_visitor.all_failures:
                 self.all_failures = self.name_check_visitor.all_failures
-            return super().check()
+            self.visit(self.tree)
+            attribute_checker.tree = self.tree
+            return self.all_failures
 
     def visit_ClassDef(self, node) -> Value:
         from vpy.lib.utils import graph, get_class_environment, get_at
@@ -232,7 +234,7 @@ class LensCheckVisitor(BaseNodeVisitor):
             for field in cls_env.fields[mver]:
                 if (
                     field.name not in cls_env.get_lenses[mver]
-                    or v.name not in cls_env.get_lenses[mver][field.name]
+                    or v not in cls_env.get_lenses[mver][field.name]
                 ):
                     self.show_error(
                         m,

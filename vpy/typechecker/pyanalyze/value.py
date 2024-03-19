@@ -28,6 +28,7 @@ from itertools import chain
 import sys
 from types import FunctionType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     cast,
@@ -54,6 +55,8 @@ from vpy.typechecker.pyanalyze.extensions import CustomCheck, ExternalType
 
 from .safe import all_of_type, safe_equals, safe_isinstance, safe_issubclass
 
+if TYPE_CHECKING:
+    from vpy.lib.lib_types import VersionId, Environment
 T = TypeVar("T")
 # __builtin__ in Python 2 and builtins in Python 3
 BUILTIN_MODULE = str.__module__
@@ -640,6 +643,12 @@ class UnboundMethodValue(Value):
     typevars: Optional[TypeVarMap] = field(default=None, compare=False)
     """Extra TypeVars applied to this method."""
 
+    version: "VersionId | None" = None
+    """Version where this method is bound."""
+
+    env: "Environment | None" = None
+    """Environment to perform cached versioned lookups."""
+
     def get_method(self) -> Optional[Any]:
         """Return the runtime callable for this ``UnboundMethodValue``, or
         None if it cannot be found.
@@ -653,10 +662,27 @@ class UnboundMethodValue(Value):
             typ = root.get_type()
         # TODO: Add versioned lookup here
         try:
+            from vpy.lib.lookup import get_at
+
             method = getattr(typ, self.attr_name)
-            if self.secondary_attr_name is not None:
-                method = getattr(method, self.secondary_attr_name)
-        except AttributeError:
+            if (
+                hasattr(method, "__functions")
+                and self.version is not None
+                and self.env is not None
+            ):
+                m = next(
+                    m
+                    for m in self.env.methods[typ.__name__][self.version]
+                    if m.name
+                    == (
+                        self.attr_name
+                        if self.secondary_attr_name is None
+                        else self.secondary_attr_name
+                    )
+                )
+                mver = get_at(m)
+                method = getattr(method, "__functions")[mver]
+        except Exception as e:
             return None
         return method
 
@@ -693,6 +719,8 @@ class UnboundMethodValue(Value):
             typevars=(
                 typevars if self.typevars is None else {**self.typevars, **typevars}
             ),
+            version=self.version,
+            env=self.env,
         )
 
     def __str__(self) -> str:

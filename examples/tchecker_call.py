@@ -1,33 +1,23 @@
 from vpy.decorators import at, get, run, version
 
 
-@version(name="init")
-@version(name="last", replaces=["init"])
-@version(name="full", replaces=["init"])
-@version(name="merge", replaces=["init", "full", "last"])
+@version(name="1")
+@version(name="2", upgrades=["1"])
 class C:
-    # @at("init")
-    # def a(self) -> bool:
-    #     return True
 
-    # @at("full")
-    # def a(self) -> str:
-    #     return "1"
-
-    @at("full")
+    @at("1")
     def b(self) -> str:
-        """This method is introduced in version full and available to all clients in version init."""
-        return "1 2".split()
+        return ""
 
-    @at("last")
-    def b(self) -> str:
-        """This replacement definition for `b` requires a lens from full -> last."""
-        return "1"
+    @at("2")
+    def b(self) -> bool:
+        return True
 
-    # @at("merge")
-    # def b(self) -> str:
-    #     return "1"
+    # This definition is not well typed since the result of method `b` in version 1 has type `str`
+    @at("1")
+    def m(self) -> bool:
+        return self.b()
 
-    @at("init")
-    def m(self):
+    @at("2")
+    def n(self) -> bool:
         return self.b()

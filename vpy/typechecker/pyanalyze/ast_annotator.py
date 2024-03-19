@@ -15,7 +15,10 @@ import traceback
 import types
 from typing import Optional, Type, Union
 
-from vpy.typechecker.pyanalyze.version_checker import VersionCheckVisitor
+from vpy.typechecker.pyanalyze.version_checker import (
+    LensCheckVisitor,
+    VersionCheckVisitor,
+)
 
 from .analysis_lib import make_module
 from .error_code import ErrorCode
@@ -173,31 +176,15 @@ def _annotate_module(
     Takes the module objects, its AST tree, and its literal code. Modifies the AST object in place.
 
     """
-    kwargs = visitor_cls.prepare_constructor_kwargs({})
-    options = kwargs["checker"].options
-    with ClassAttributeChecker(
-        enabled=True, options=options, tree=tree
-    ) as attribute_checker:
-        version_visitor = VersionCheckVisitor(
+    kwargs = LensCheckVisitor.prepare_constructor_kwargs({})
+    options = NameCheckVisitor.prepare_constructor_kwargs({})["checker"].options
+    with ClassAttributeChecker(enabled=True, options=options) as attribute_checker:
+        version_visitor = LensCheckVisitor(
             filename,
             code_str,
             tree,
-            module=module,
             settings={error_code: show_errors for error_code in ErrorCode},
-            attribute_checker=attribute_checker,
-            annotate=True,
             **kwargs,
         )
-        version_visitor.check(ignore_missing_module=True)
-        visitor = visitor_cls(
-            filename,
-            code_str,
-            tree,
-            module=module,
-            settings={error_code: show_errors for error_code in ErrorCode},
-            attribute_checker=attribute_checker,
-            annotate=True,
-            **kwargs,
-        )
-        visitor.check(ignore_missing_module=True)
-    return visitor
+        version_visitor.check()
+    return version_visitor

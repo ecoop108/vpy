@@ -660,6 +660,7 @@ class ClassAttributeChecker:
         options: Options = Options.from_option_list(),
         ts_finder: Optional[TypeshedFinder] = None,
     ) -> None:
+        self.tree = None
         self.options = options
         # we might not have examined all parent classes when looking for attributes set
         # we dump them here. incase the callers want to extend coverage.
@@ -705,7 +706,10 @@ class ClassAttributeChecker:
         if exc_type is None and self.enabled:
             from vpy.lib.utils import get_module_environment
 
-            env = get_module_environment(self.tree)
+            if self.tree:
+                env = get_module_environment(self.tree)
+            else:
+                env = None
             self.check_attribute_reads(env)
 
             if self.should_check_unused_attributes:
@@ -935,7 +939,7 @@ class ClassAttributeChecker:
         attr_name: str,
         node: ast.AST,
         visitor: "NameCheckVisitor",
-        env: "Environment",
+        env: "Environment | None",
     ) -> None:
         # class itself has the attribute
         if hasattr(typ, attr_name):
@@ -971,10 +975,12 @@ class ClassAttributeChecker:
         serialized = self.serialize_type(typ)
 
         # it was set on an instance of the class
+
         # iterate over all base versions of `version` and lookup the attribute
-        for v in env.bases[typ.__name__][version]:
-            if attr_name in self.attributes_set[serialized][v]:
-                return
+        if env is not None:
+            for v in env.bases[typ.__name__][version]:
+                if attr_name in self.attributes_set[serialized][v]:
+                    return
 
         # web browser test classes
         if attr_name == "browser" and hasattr(typ, "_pre_setup"):

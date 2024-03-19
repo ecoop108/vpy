@@ -75,13 +75,13 @@ class Name:
     #     return 0 if f() else 1
 
 
-# @run("full")
-# def main():
-#     obj = Name("Rolling Stones")
-#     print(obj.get_full_name())
-#     obj.set_last("Stoned")
-#     print(obj.get_full_name())
+@run("full")
+def main():
+    obj = Name("Rolling Stones")
+    print(obj.get_full_name())
+    obj.set_last("Stoned")
+    print(obj.get_full_name())
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
