@@ -374,9 +374,9 @@ class BaseNodeVisitor(ast.NodeVisitor):
         json_output = args.json_output
         if cls.error_code_enum is not None:
             if args.enable_all:
-                settings = {code: True for code in cls.error_code_enum}
+                settings.update({code: True for code in cls.error_code_enum})
             elif args.disable_all:
-                settings = {code: False for code in cls.error_code_enum}
+                settings.update({code: False for code in cls.error_code_enum})
             else:
                 settings = cls._get_default_settings()
             if settings is not None:
@@ -386,6 +386,8 @@ class BaseNodeVisitor(ast.NodeVisitor):
                     settings[cls.error_code_enum[setting]] = False
         if json_output:
             settings["print"] = False
+        else:
+            settings["print"] = True
         kwargs = {
             key: value
             for key, value in args.__dict__.items()

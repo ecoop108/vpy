@@ -183,7 +183,8 @@ def _annotate_module(
             filename,
             code_str,
             tree,
-            settings={error_code: show_errors for error_code in ErrorCode},
+            settings={"print": show_errors}
+            | {error_code: show_errors for error_code in ErrorCode},
             **kwargs,
         )
         version_visitor.check()

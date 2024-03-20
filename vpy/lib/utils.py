@@ -34,6 +34,7 @@ from vpy.lib.lib_types import (
     Lenses,
     Version,
     VersionId,
+    VersionedMethod,
 )
 import uuid
 
@@ -169,7 +170,7 @@ def get_class_environment(cls_ast: ClassDef):
         env.methods[k.name] = {  # type: ignore
             m  # type: ignore
             for m in methods_lookup(g, cls_ast, k.name)
-            if isinstance(m, FunctionDef) or m[0].name not in dir(object)
+            if isinstance(m, VersionedMethod) or m[0].name not in dir(object)
         }
         env.bases[k.name] = base_versions(g, cls_ast, k.name)
         env.fields[k.name] = fields_lookup(g, cls_ast, k.name)

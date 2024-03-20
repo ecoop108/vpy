@@ -6,7 +6,6 @@ from vpy.typechecker.pyanalyze.node_visitor import (
     BaseNodeVisitor,
     Failure,
 )
-from vpy.typechecker.pyanalyze.signature import BoundMethodSignature
 from vpy.typechecker.pyanalyze.value import CanAssignError, Value
 from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
@@ -25,9 +24,10 @@ class VersionCheckVisitor(BaseNodeVisitor):
 
     def visit_ClassDef(self, node) -> Value:
 
-        from vpy.lib.utils import get_decorators
+        from vpy.lib.utils import get_decorators, get_class_environment
         from vpy.lib.lib_types import Version
 
+        self.cls_env = get_class_environment(node)
         version_dec = get_decorators(node, "version")
         versions = [(Version(d.keywords), d) for d in version_dec]
         for idx, (version, v_node) in enumerate(versions):
@@ -109,11 +109,10 @@ class VersionCheckVisitor(BaseNodeVisitor):
     def visit_FunctionDef(self, node) -> Value:
         from vpy.lib.utils import get_at, get_decorators
 
-        version_dec = (
-            get_decorators(node, "at")
-            + get_decorators(node, "get")
-            + get_decorators(node, "put")
-        )
+        at_dec = get_decorators(node, "at")
+        get_dec = get_decorators(node, "get")
+        put_dec = get_decorators(node, "put")
+        version_dec = at_dec + get_dec + put_dec
         # TODO: Create error code for this
         if len(version_dec) == 0:
             self.show_error(node, "Missing version annotation")
@@ -125,8 +124,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
         version = get_at(node)
 
         try:
-            v = next(v for (v, _) in self.graph if v.name == version)
-            return
+            next(v for (v, _) in self.graph if v.name == version)
         except StopIteration:
             self.show_error(
                 version_dec,
@@ -141,7 +139,6 @@ class LensCheckVisitor(BaseNodeVisitor):
     def check(self) -> list[Failure]:
         from vpy.lib.utils import get_module_environment
 
-        self.annotate = True
         version_check_visitor = VersionCheckVisitor(
             filename=self.filename,
             contents=self.contents,
@@ -168,44 +165,64 @@ class LensCheckVisitor(BaseNodeVisitor):
             self.name_check_visitor.check()
             if self.name_check_visitor.all_failures:
                 self.all_failures = self.name_check_visitor.all_failures
+            self.env = get_module_environment(self.tree)
             self.visit(self.tree)
             attribute_checker.tree = self.tree
             return self.all_failures
 
     def visit_ClassDef(self, node) -> Value:
-        from vpy.lib.utils import graph, get_class_environment, get_at
+        from vpy.lib.utils import graph, get_class_environment, get_at, get_decorators
         from vpy.lib.lookup import _method_lookup
-        from vpy.lib.lib_types import Graph
+        from vpy.lib.lib_types import Graph, VersionedMethod
 
         cls_env = get_class_environment(node)
         g = graph(node)
         for v in g.all():
-            methods = cls_env.methods[v.name]
+            methods = {m for m in cls_env.methods[v.name]}
             lenses_methods = {
-                l.node
+                VersionedMethod(interface=l.node, implementation=l.node)
                 for w in cls_env.get_lenses.get(v.name, {}).values()
                 for l in w.values()
                 if l.node is not None
             }
             for m in methods.union(lenses_methods):
-                if isinstance(m, tuple):
+                if not isinstance(m, VersionedMethod):
                     if any(get_at(n) != get_at(m[0]) for n in m):
                         self.show_error(
                             m[0],
                             f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
                         )
                     return
-                mver = get_at(m)
-                mdef = _method_lookup(
-                    Graph(graph=[v]),
-                    node,
-                    m.name,
-                    v.name,
+                mver = get_at(m.implementation)
+                self.__check_missing_method_lens(
+                    implementation=m.implementation,
+                    interface=m.interface,
+                    cls_env=cls_env,
                 )
-                self.__check_missing_method_lens(m, mdef, cls_env)
-                self.__check_missing_field_lens(m, mver, v.name, cls_env)
+                self.__check_missing_field_lens(m.implementation, mver, v.name, cls_env)
 
         method_lenses = cls_env.method_lenses
+
+        for fun in (n for n in node.body if isinstance(n, FunctionDef)):
+            lens_dec_node = get_decorators(fun, "get")
+            if lens_dec_node == 1:
+                frm, to, attr = (a.value for a in lens_dec_node[0].args)
+                field_lens = cls_env.get_lenses.find_lens(
+                    v_from=frm, v_to=to, field_name=attr
+                )
+                method_lens = cls_env.method_lenses.find_lens(
+                    v_from=frm, v_to=to, field_name=attr
+                )
+                if field_lens is None and method_lens is None:
+                    self.show_error(
+                        lens_dec_node[0],
+                        f"Attribute {attr} is not defined in version {t} of this class",
+                    )
+                if all(m.interface.name != method for m in cls_env.methods[v]):
+                    self.show_error(
+                        lens_node,
+                        f"Method {method} is not defined in version {v} of this class",
+                    )
 
         for v, v_lenses in method_lenses.items():
             for method, m_lenses in v_lenses.items():
@@ -213,17 +230,15 @@ class LensCheckVisitor(BaseNodeVisitor):
                     lens_node = lens.node
                     if lens_node is None:
                         continue
-                    m_v = _method_lookup(
-                        Graph(graph=[g.find_version(v)]),
-                        node,
-                        method,
-                        v,
+                    m_v = next(
+                        m.interface
+                        for m in cls_env.methods[v]
+                        if m.interface.name == method
                     )
-                    m_t = _method_lookup(
-                        Graph(graph=[g.find_version(t)]),
-                        node,
-                        method,
-                        t,
+                    m_t = next(
+                        m.interface
+                        for m in cls_env.methods[t]
+                        if m.interface.name == method
                     )
                     if m_v is not None and m_t is not None:
                         # Check that signature of method and lens match
@@ -244,28 +259,33 @@ class LensCheckVisitor(BaseNodeVisitor):
                     )
 
     def __check_missing_method_lens(
-        self, m: FunctionDef, mdef: FunctionDef, cls_env: "Environment"
+        self,
+        interface: FunctionDef,
+        implementation: FunctionDef,
+        cls_env: "Environment",
     ):
-        """Check for missing method lens between the introduced definition `mdef` and its corresponding versioned definition `m` (which will be used by clients in the context of get_at(m))"""
+        """Check for missing method lens between the interface definition and its corresponding implementation (which will be used by clients in the context of get_at(m))"""
         from vpy.lib.lookup import get_at
 
-        if mdef is None:
+        if interface is None:
             return
-        mdef_v = get_at(mdef)
-        m_v = get_at(m)
+        mdef_v = get_at(interface)
+        m_v = get_at(implementation)
         if mdef_v == m_v:
             return
-        mdef_sig = self.name_check_visitor.visit(mdef).signature
-        m_sig = self.name_check_visitor.visit(m).signature
+        mdef_sig = self.name_check_visitor.visit(interface).signature
+        m_sig = self.name_check_visitor.visit(implementation).signature
         if (
-            cls_env.method_lenses.find_lens(v_from=mdef_v, v_to=m_v, field_name=m.name)
+            cls_env.method_lenses.find_lens(
+                v_from=mdef_v, v_to=m_v, field_name=implementation.name
+            )
             is None
         ):
             if isinstance(
                 mdef_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
             ):
                 self.show_error(
-                    m,
+                    implementation,
                     f"""Missing lens from version {mdef_v}: signatures do not match""",
                 )
 

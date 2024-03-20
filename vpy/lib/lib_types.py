@@ -79,11 +79,18 @@ class ClassEnvironment:
     versions: "Graph" = field(default_factory=dict)
 
 
+class VersionedMethod(NamedTuple):
+    interface: FunctionDef
+    implementation: FunctionDef
+
+
 @dataclass
 class Environment:
     bases: dict[str, dict[VersionId, set[VersionId]]] = field(default_factory=dict)
     fields: dict[str, dict[VersionId, set[Field]]] = field(default_factory=dict)
-    methods: dict[str, dict[VersionId, set[FunctionDef]]] = field(default_factory=dict)
+    methods: dict[str, dict[VersionId, set[VersionedMethod]]] = field(
+        default_factory=dict
+    )
     get_lenses: dict[str, Lenses] = field(default_factory=dict)
     put_lenses: dict[str, Lenses] = field(default_factory=dict)
     method_lenses: dict[str, Lenses] = field(default_factory=dict)

@@ -154,6 +154,9 @@ class SelectMethodsTransformer(NodeTransformer):
         return node
 
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
-        if node not in self.env.methods[self.cls_ast.name][self.v]:
+        if all(
+            node not in (m.implementation, m.interface)
+            for m in self.env.methods[self.cls_ast.name][self.v]
+        ):
             return None
         return node

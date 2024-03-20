@@ -611,9 +611,9 @@ def _get_attribute_from_mro(
                             from vpy.lib.lookup import get_at
 
                             f = next(
-                                m
+                                m.interface
                                 for m in ctx.env.methods[typ.__name__][ctx.version]
-                                if m.name == ctx.attr
+                                if m.interface.name == ctx.attr
                             )
                             # TODO: Add value from f here
                             f_ver = get_at(f)

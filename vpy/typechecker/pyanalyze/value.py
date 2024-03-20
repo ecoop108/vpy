@@ -671,9 +671,9 @@ class UnboundMethodValue(Value):
                 and self.env is not None
             ):
                 m = next(
-                    m
+                    m.interface
                     for m in self.env.methods[typ.__name__][self.version]
-                    if m.name
+                    if m.interface.name
                     == (
                         self.attr_name
                         if self.secondary_attr_name is None

@@ -1,6 +1,6 @@
 import ast
 from ast import ClassDef, FunctionDef, NodeVisitor
-from vpy.lib.lib_types import Field, Graph, Lenses, VersionId
+from vpy.lib.lib_types import Field, Graph, Lenses, VersionId, VersionedMethod
 from vpy.lib.utils import (
     fields_in_function,
     get_decorators,
@@ -75,7 +75,7 @@ def fields_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
 
 def methods_lookup(
     g: Graph, cls_ast: ClassDef, v: VersionId
-) -> set[FunctionDef | tuple[FunctionDef]]:
+) -> set[VersionedMethod | tuple[FunctionDef]]:
     """
     Returns the methods of a class available at version v. These may be
     explictly defined at v or inherited from some other related version(s).
@@ -83,7 +83,7 @@ def methods_lookup(
 
     class MethodCollector(NodeVisitor):
         def __init__(self):
-            self.methods = set()
+            self.methods: set[VersionedMethod | tuple[FunctionDef]] = set()
 
         def visit_ClassDef(self, node: ClassDef):
             self.generic_visit(node)
@@ -92,12 +92,7 @@ def methods_lookup(
             if not is_lens(node):
                 mdef = _method_lookup(g, cls_ast, node.name, v)
                 if mdef is not None:
-                    if isinstance(mdef, tuple):
-                        if get_at(node) in [get_at(m) for m in mdef]:
-                            self.methods.add(mdef)
-                    else:
-                        if get_at(node) == get_at(mdef):
-                            self.methods.add(mdef)
+                    self.methods.add(mdef)
 
     visitor = MethodCollector()
     visitor.visit(cls_ast)
@@ -247,16 +242,16 @@ def __replacement_method_lookup(
         _method_lookup(g.delete(v), cls_ast, m, r.name) for r in replacements
     ):
         if me is not None:
-            if isinstance(me, tuple):
+            if not isinstance(me, VersionedMethod):
                 rm.union(set(me))
             else:
                 version_v = g.find_version(v)
                 if version_v is not None:
-                    if get_at(me) in [r for r in version_v.replaces] and (
-                        lm := __local_method_lookup(cls_ast=cls_ast, m=m, v=v)
-                    ):
+                    if get_at(me.implementation) in [
+                        r for r in version_v.replaces
+                    ] and (lm := __local_method_lookup(cls_ast=cls_ast, m=m, v=v)):
                         return lm
-                rm.add(me)
+                rm.add(me.implementation)
     if len(rm) == 0:
         return None
     if len(rm) == 1:
@@ -264,7 +259,7 @@ def __replacement_method_lookup(
         ge = g.delete(v)
         ge = g.delete(mv)
         me = _method_lookup(ge, cls_ast, m, v)
-        if isinstance(me, tuple):
+        if not isinstance(me, VersionedMethod):
             return me
 
     return tuple(rm)
@@ -301,35 +296,46 @@ def __inherited_method_lookup(
     um: set[FunctionDef] = set()
     for me in [_method_lookup(graph, cls_ast, m, r) for r in g.parents(v)]:
         if me is not None:
-            if isinstance(me, tuple):
+            if not isinstance(me, VersionedMethod):
                 um.union(set(me))
             else:
-                um.add(me)
+                um.add(me.implementation)
     return tuple(um) if len(um) > 0 else None
 
 
 def _method_lookup(
     g: Graph, cls_ast: ClassDef, m: str, v: VersionId
-) -> FunctionDef | tuple[FunctionDef, ...] | None:
+) -> VersionedMethod | tuple[FunctionDef, ...] | None:
     if g.find_version(v) is None:
         return None
+    interface = implementation = None
     rm = __replacement_method_lookup(g, cls_ast, m, v)
     if rm is not None:
         if len(rm) == 1:
-            return rm[0]
-        return rm
+            implementation = interface = rm[0]
+        else:
+            return rm
 
     lm = __local_method_lookup(cls_ast, m, v)
     if lm is not None:
         if len(lm) == 1:
-            return lm[0]
-        return lm
+            interface = lm[0]
+            if implementation is None:
+                implementation = lm[0]
+        else:
+            return lm
 
     um = __inherited_method_lookup(g, cls_ast, m, v)
     if um is not None:
         if len(um) == 1:
-            return um[0]
-        return um
+            if interface is None:
+                interface = um[0]
+            if implementation is None:
+                implementation = um[0]
+        else:
+            return um
+    if interface is not None and implementation is not None:
+        return VersionedMethod(interface=interface, implementation=implementation)
     return None
 
 

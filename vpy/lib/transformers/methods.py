@@ -55,8 +55,8 @@ class MethodLensTransformer(ast.NodeTransformer):
             node_copy.name = f"__{self.v_from}__" + node.name
             node = node_copy
 
-            if mdef is not None and mdef not in self.cls_ast.body:
-                mdef = deepcopy(mdef)
+            if mdef is not None and mdef.implementation not in self.cls_ast.body:
+                mdef = deepcopy(mdef.implementation)
                 self_attr = create_obj_attr(
                     obj=Name(id="self", ctx=Load()),
                     attr=method_lens.node.name,
@@ -134,24 +134,15 @@ class MethodLensTransformer(ast.NodeTransformer):
                     if l.node is not None
                 ]:
                     method_v_from = next(
-                        m
+                        m.implementation
                         for m in self.env.methods[obj_type][self.v_from]
-                        if m.name == node.func.attr
-                    )
-                    method_v_target = next(
-                        (
-                            m
-                            for m in self.env.methods[obj_type][self.v_target]
-                            if m.name == node.func.attr
-                        ),
-                        None,
+                        if m.implementation.name == node.func.attr
                     )
                     method_lens = self.env.method_lenses[obj_type].find_lens(
                         v_from=self.v_from,
                         v_to=self.v_target,
                         field_name=node.func.attr,
                     )
-                    # TODO: Type checker should ensure this is not None
                     if get_at(method_v_from) == self.v_from:
                         node.func.attr = f"__{self.v_from}_{method_v_from.name}"
                     if method_lens is not None:
