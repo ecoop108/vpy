@@ -430,6 +430,7 @@ class BaseNodeVisitor(ast.NodeVisitor):
                 cls._write_markdown_report(markdown_output, failures)
             if json_output and failures:
                 cls._print_json_report(failures)
+                return 0
         return 1 if failures else 0
 
     @classmethod
