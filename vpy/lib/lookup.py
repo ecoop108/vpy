@@ -259,7 +259,7 @@ def __replacement_method_lookup(
         ge = g.delete(v)
         ge = g.delete(mv)
         me = _method_lookup(ge, cls_ast, m, v)
-        if not isinstance(me, VersionedMethod):
+        if me is not None and not isinstance(me, VersionedMethod):
             return me
 
     return tuple(rm)

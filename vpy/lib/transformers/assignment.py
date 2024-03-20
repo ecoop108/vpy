@@ -95,9 +95,13 @@ class AssignTransformer(ast.NodeTransformer):
         self, target: Attribute, value: ast.expr, lens_ver
     ) -> list[ast.AST]:
         exprs = []
-        visitor = copy.copy(self)
-        visitor.v_target = lens_ver
-        visitor.v_from = self.v_from
+        visitor = AssignTransformer(
+            g=self.g,
+            cls_ast=self.cls_ast,
+            env=self.env,
+            v_target=lens_ver,
+            v_from=self.v_from,
+        )
         rw_exprs = visitor.__rw_assign(target, value)
         visitor.v_from = lens_ver
         visitor.v_target = self.v_target
@@ -227,8 +231,8 @@ class AssignTransformer(ast.NodeTransformer):
         """
         Implements a transformation for Augmented Assignment (+=, -=, *=, /=).
 
-        If the target of the AugAssign has a reference to an object field, this method rewrites the
-        AugAssign node by generating a regular assignment node and calling the `visit`
+        If the target of the AugAssign has a reference to an object field, we rewrite the
+        the node by generating a regular assignment node and calling the `visit`
         method on that new node. Otherwise, the node remains
         unchanged.
         """

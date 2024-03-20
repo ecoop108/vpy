@@ -11,7 +11,7 @@ from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
 
 if TYPE_CHECKING:
-    from vpy.lib.lib_types import VersionId, Environment
+    from vpy.lib.lib_types import VersionId, Environment, ClassEnvironment
 
 
 class VersionCheckVisitor(BaseNodeVisitor):
@@ -172,8 +172,8 @@ class LensCheckVisitor(BaseNodeVisitor):
 
     def visit_ClassDef(self, node) -> Value:
         from vpy.lib.utils import graph, get_class_environment, get_at, get_decorators
-        from vpy.lib.lookup import _method_lookup
-        from vpy.lib.lib_types import Graph, VersionedMethod
+        from vpy.lib.lookup import is_lens
+        from vpy.lib.lib_types import VersionedMethod
 
         cls_env = get_class_environment(node)
         g = graph(node)
@@ -193,14 +193,13 @@ class LensCheckVisitor(BaseNodeVisitor):
                             f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
                         )
                     return
-                mver = get_at(m.implementation)
-                self.__check_missing_method_lens(
-                    implementation=m.implementation,
-                    interface=m.interface,
-                    cls_env=cls_env,
-                )
-                self.__check_missing_field_lens(m.implementation, mver, v.name, cls_env)
-
+                if not is_lens(m.implementation):
+                    self.__check_missing_method_lens(
+                        implementation=m.implementation,
+                        interface=m.interface,
+                        cls_env=cls_env,
+                    )
+                    self.__check_missing_field_lens(m.implementation, v.name, cls_env)
         method_lenses = cls_env.method_lenses
 
         for fun in (n for n in node.body if isinstance(n, FunctionDef)):
@@ -245,14 +244,17 @@ class LensCheckVisitor(BaseNodeVisitor):
                         self.__check_lens_method_signature(lens_node, m_v, v, t)
 
     def __check_missing_field_lens(
-        self, m: FunctionDef, mver: "VersionId", v: "VersionId", cls_env: "Environment"
+        self,
+        m: FunctionDef,
+        v: "VersionId",
+        cls_env: "ClassEnvironment",
     ):
+        from vpy.lib.lookup import get_at
+
+        mver = get_at(m)
         if mver != v and mver not in cls_env.bases[v]:
             for field in cls_env.fields[mver]:
-                if (
-                    field.name not in cls_env.get_lenses[mver]
-                    or v not in cls_env.get_lenses[mver][field.name]
-                ):
+                if cls_env.get_lenses.find_lens(mver, v, field.name) is None:
                     self.show_error(
                         m,
                         f"No path for field {field.name} in method {m.name} between versions {mver} and {v}",
