@@ -49,7 +49,9 @@ def target(file, version: VersionId, strict=False):
         exit("Error reading module.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    mod_ast, _ = parse_module(module)
+    mod_ast, visitor = parse_module(module)
+    if visitor.all_failures != []:
+        return
     if strict:
         mod_ast = ModuleStrictTransformer(version).visit(mod_ast)
     else:

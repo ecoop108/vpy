@@ -219,19 +219,6 @@ class AssignTransformer(ast.NodeTransformer):
                 exprs.append(lens_assign)
 
             if step_target != self.v_target:
-                # t = self.v_target
-                # frm = self.v_from
-                # self.v_target = step_target
-                # rw_exprs = self.rw_assign(lhs, rhs)
-                # self.v_from = step_target
-                # self.v_target = t
-                # exprs = []
-                # for expr in rw_exprs:
-                #     exprs.extend(self.visit(expr))
-                # self.v_from = frm
-                # self.v_target = t
-                # return exprs
-
                 exprs = self.step_rw_assign(lhs, rhs, step_target)
 
         return exprs

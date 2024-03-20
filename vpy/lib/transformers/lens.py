@@ -29,6 +29,7 @@ class PutLens(ast.NodeTransformer):
         for field in references:
             node.args.kwonlyargs.append(field_to_arg(field))
             node.args.kw_defaults.append(None)
+        # Replace the `get` decorator with `put`
         for dec in node.decorator_list:
             if (
                 isinstance(dec, Call)
@@ -42,6 +43,7 @@ class PutLens(ast.NodeTransformer):
         return node
 
     def visit_Attribute(self, node):
+        # Remove the object name (e.g. `self`) from the qualified attribute (`self.attr`) expression
         if isinstance(node.value, Name) and self.__obj_arg == node.value.id:
             name_node = Name(id=node.attr, ctx=ast.Load())
             set_typeof_node(name_node, typeof_node(node))

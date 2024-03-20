@@ -83,7 +83,7 @@ def annotate_file(
     visitor_cls: Type[NameCheckVisitor] = NameCheckVisitor,
     verbose: bool = False,
     dump: bool = False,
-    show_errors: bool = False,
+    show_errors: bool = True,
 ) -> tuple[ast.Module, NameCheckVisitor]:
     """Annotate the code in a Python source file. Return an AST with extra `inferred_value`
     attributes.
@@ -169,7 +169,7 @@ def _annotate_module(
     tree: ast.Module,
     code_str: str,
     visitor_cls: Type[NameCheckVisitor],
-    show_errors: bool = False,
+    show_errors: bool = True,
 ) -> NameCheckVisitor:
     """Annotate the AST for a module with inferred values.
 
