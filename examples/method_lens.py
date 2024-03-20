@@ -7,7 +7,7 @@ from vpy.decorators import at, get, run, version
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class Name:
+class C:
     @at("1")
     def m(self, x: int) -> bool:
         x = x + 1
@@ -17,14 +17,16 @@ class Name:
     def m(self) -> int:
         return 0
 
-    # The following lens describes how clients in version `1` can use the (new) definition introduced in version
-    # `2`.
+    # The following lens describes how clients in version `2` can use the (previous) definition introduced in version
+    # `1`.
 
     # The signature of the lens matches the signature of `m` at version `1` (so that client calls don't
     # break).
 
     # The parameter `f` is a pointer to the function `m` at version `2`. It allows the developer to state how the
     # parameters and the return results map between the two versions.
+
+    # This lens is used to rewrite code at version `1` that makes calls to method `m`.
 
     # Method lenses allow common breaking changes such as paramater renaming or reordering, parameter introduction or
     # removal, or return type changes, to become non-breaking.
@@ -65,6 +67,6 @@ class Name:
     # Then, uncomment the following lens and extract the slice again. Now the definition of `w` uses the lens to adapt
     # the method.
 
-    # @get("2", "1", "m")
-    # def lens_m_full(self, f: Callable[[int], bool]) -> int:
-    #     return not f(1)
+    @get("2", "1", "m")
+    def lens_m_full(self, f: Callable[[int], bool]) -> int:
+        return not f(1)
