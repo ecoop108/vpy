@@ -136,6 +136,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
 
 
 class LensCheckVisitor(BaseNodeVisitor):
+    error_code_enum = ErrorCode
 
     def check(self) -> list[Failure]:
         from vpy.lib.utils import get_module_environment
@@ -286,28 +287,3 @@ class LensCheckVisitor(BaseNodeVisitor):
                 f"""Wrong signature in lens of method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
     def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
             )
-
-    #     lens_params = list(lens_sig.parameters.values())[2:]
-    #     m_params = list(m_sig.parameters.values())[1:]
-    #     if len(lens_params) != len(m_params):
-    #         self.show_error(
-    #             lens,
-    #             f"""Wrong signature in lens of method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
-    # def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
-    #         )
-    #     else:
-    #         for p0, p1, pn in zip(lens_params, m_params, lens.args.args[2:]):
-    #             if p0.annotation.is_assignable(p1.annotation, self.name_check_visitor):
-    #                 self.show_error(
-    #                     pn,
-    #                     f"""Incompatible type for argument {p0.name} in signature of lens for method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
-    # def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
-    #                 )
-    #     if lens_sig.return_value.is_assignable(
-    #         m_sig.return_value, self.name_check_visitor
-    #     ):
-    #         self.show_error(
-    #             lens_sig,
-    #             f"""Incompatible return type in signature of lens for method {m.name} from version {v} to {t}. The signature must match that of {m.name} in version {v}:
-    # def {lens.name}(self, f: Callable, {','.join(f"{p.name}: {p.annotation.simplify()}" for p in list(m_sig.parameters.values())[1:])}) -> {str(m_sig.return_value)}""",
-    #         )

@@ -43,6 +43,8 @@ import qcore
 from ast_decompiler import decompile
 from typing_extensions import NotRequired, Protocol, TypedDict
 
+from vpy.typechecker.pyanalyze.error_code import ErrorCode
+
 from . import analysis_lib
 from .safe import safe_getattr, safe_isinstance
 
@@ -368,7 +370,8 @@ class BaseNodeVisitor(ast.NodeVisitor):
     def main(cls) -> int:
         """Can be used as a main function. Calls the checker on files given on the command line."""
         args = cls._get_argument_parser().parse_args()
-
+        settings = {}
+        json_output = args.json_output
         if cls.error_code_enum is not None:
             if args.enable_all:
                 settings = {code: True for code in cls.error_code_enum}
@@ -381,17 +384,16 @@ class BaseNodeVisitor(ast.NodeVisitor):
                     settings[cls.error_code_enum[setting]] = True
                 for setting in args.disable:
                     settings[cls.error_code_enum[setting]] = False
-            kwargs = {
-                key: value
-                for key, value in args.__dict__.items()
-                if key not in {"enable_all", "disable_all", "enable", "disable"}
-            }
-            kwargs["settings"] = settings
-        else:
-            kwargs = dict(args.__dict__)
+        if json_output:
+            settings["print"] = False
+        kwargs = {
+            key: value
+            for key, value in args.__dict__.items()
+            if key not in {"enable_all", "disable_all", "enable", "disable"}
+        }
+        kwargs["settings"] = settings
         markdown_output = kwargs.pop("markdown_output", None)
-        json_output = kwargs.pop("json_output", None)
-
+        json_output = kwargs.pop("json_output")
         verbose = kwargs.pop("verbose", 0)
         if verbose == 0 or verbose is None:
             verbosity = logging.ERROR
@@ -426,15 +428,14 @@ class BaseNodeVisitor(ast.NodeVisitor):
             failures = cls._run(**kwargs)
             if markdown_output is not None and failures:
                 cls._write_markdown_report(markdown_output, failures)
-            if json_output is not None and failures:
-                cls._write_json_report(json_output, failures)
+            if json_output and failures:
+                cls._print_json_report(failures)
         return 1 if failures else 0
 
     @classmethod
-    def _write_json_report(cls, output_file: str, failures: List[Failure]) -> None:
+    def _print_json_report(cls, failures: List[Failure]) -> None:
         failures = [_make_serializable(failure) for failure in failures]
-        with open(output_file, "w") as f:
-            json.dump(failures, f)
+        print(json.dumps(failures))
 
     @classmethod
     def _write_markdown_report(cls, output_file: str, failures: List[Failure]) -> None:
@@ -717,8 +718,9 @@ class BaseNodeVisitor(ast.NodeVisitor):
         error["message"] = message
         if save:
             self.all_failures.append(error)
-        sys.stderr.write(message)
-        sys.stderr.flush()
+        if self.settings["print"]:
+            sys.stderr.write(message)
+            sys.stderr.flush()
         if self.fail_after_first:
             raise VisitorError(message, error_code)
         return error
@@ -918,8 +920,10 @@ class BaseNodeVisitor(ast.NodeVisitor):
         )
         parser.add_argument(
             "--json-output",
+            action="store_true",
+            default=False,
             help=(
-                "Write errors to this file in JSON format. "
+                "Write errors to stdout in JSON format. "
                 "Suitable for integrating with other tools."
             ),
         )
