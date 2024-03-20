@@ -4,13 +4,13 @@ from vpy.decorators import at, version
 @version(name="1")
 @version(name="2", replaces=["1"])
 class C:
-    # In this example we introduce a duplicate definition of `m` at version 2.
     @at("1")
     def m(self): ...
 
     @at("2")
     def m(self): ...
 
+    # This is a duplicate definition of `m` at version 2.
     @at("2")
     def m(self): ...
 
@@ -22,6 +22,7 @@ class C:
     @at("1")
     def m(self):
         self.x = ...
+        self.z
 
     @at("2")
     def m(self):

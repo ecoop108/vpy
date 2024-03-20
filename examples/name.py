@@ -50,8 +50,7 @@ class Name:
         return f"{self.first} {self.last}"
 
     @at("init")
-    def m(self, x) -> bool:
-        x = x + 1
+    def m(self) -> bool:
         return True
 
     @at("full")
