@@ -87,7 +87,7 @@ def argparser() -> argparse.ArgumentParser:
     return parser
 
 
-def new_replace(
+def new_version(
     file, replaces: list[VersionId] | None, upgrades: list[VersionId] | None, name: str
 ):
     if replaces is None:
@@ -101,7 +101,7 @@ def new_replace(
         exit("Error reading module.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    mod_ast = parse_module(module)
+    mod_ast, _ = parse_module(module)
     mod_ast = AddVersionTransformer(name, replaces=replaces, upgrades=upgrades).visit(
         mod_ast
     )
@@ -128,4 +128,4 @@ def cli_main():
         exit()
 
     if args.new:
-        new_replace(args.input, args.replaces, args.upgrades, args.new)
+        new_version(args.input, args.replaces, args.upgrades, args.new)
