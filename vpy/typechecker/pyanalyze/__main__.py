@@ -1,11 +1,7 @@
-from cProfile import Profile
-from pstats import SortKey, Stats
 import sys
 
-from vpy.typechecker.pyanalyze.name_check_visitor import NameCheckVisitor
 from vpy.typechecker.pyanalyze.version_checker import (
     LensCheckVisitor,
-    VersionCheckVisitor,
 )
 
 

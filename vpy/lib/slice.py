@@ -1,14 +1,11 @@
 import ast
-from collections import defaultdict
 from types import ModuleType
 from typing import Type
 
-from vpy.lib import lookup
 
-from vpy.lib.lib_types import Environment, VersionId
-from vpy.lib.transformers.cls import ClassTransformer
+from vpy.lib.lib_types import VersionId
 from vpy.lib.transformers.module import ModuleTransformer
-from vpy.lib.utils import parse_class, get_module_environment, parse_module
+from vpy.lib.utils import parse_module
 
 
 def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
