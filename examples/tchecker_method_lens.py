@@ -3,12 +3,45 @@
 from vpy.decorators import at, get, version
 
 
-# There are two versions, with the same fields (empty set).
+@version(name="1")
+@version(name="2", replaces=["1"])
+@version(name="3", replaces=["2"])
+class C:
+    @at("1")
+    def x(self) -> str: ...
+
+    @at("2")
+    def y(self) -> str: ...
+
+    # This lens is not well-formed since from and to versions are the same.
+    @get("1", "1", "x")
+    def lens_y(self, f) -> str: ...
+
+    # This lens is not well-formed since method `y` does not exist in version 1.
+    @get("1", "2", "y")
+    def lens_y(self, f) -> str: ...
+
+    # This lens is not well-formed since method `x` does not exist in version 2.
+    @get("1", "2", "x")
+    def lens_x(self, f) -> str: ...
+
+    @at("1")
+    def m(self): ...
+
+    @at("2")
+    def m(self): ...
+
+    # This lens is not well-formed since the interface of method `m` in version 3 is defined at version 2, so the lens
+    # must be for that version.
+    @get("1", "3", "m")
+    def lens_m(self, f): ...
+
+
 @version(name="1")
 @version(name="2", replaces=["1"])
 class C:
-    # Method display does not require lenses since its signature is the same, which means clients from 1 can use the
-    # definition of 2 without their code breaking.
+    # Method `m` does not require lenses since its signature is the same in both versions, which means clients from 1
+    # can use the definition of 2 without their code breaking.
     @at("1")
     def m(self) -> str: ...
 

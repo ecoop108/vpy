@@ -11,7 +11,7 @@ from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
 
 if TYPE_CHECKING:
-    from vpy.lib.lib_types import VersionId, Environment, ClassEnvironment
+    from vpy.lib.lib_types import VersionId, Environment, ClassEnvironment, Graph
 
 
 class VersionCheckVisitor(BaseNodeVisitor):
@@ -171,57 +171,59 @@ class LensCheckVisitor(BaseNodeVisitor):
             return self.all_failures
 
     def visit_ClassDef(self, node) -> Value:
-        from vpy.lib.utils import graph, get_class_environment, get_at, get_decorators
-        from vpy.lib.lookup import is_lens
-        from vpy.lib.lib_types import VersionedMethod
+        from vpy.lib.utils import graph, get_class_environment, get_decorators, get_at
 
         cls_env = get_class_environment(node)
         g = graph(node)
-        for v in g.all():
-            methods = {m for m in cls_env.methods[v.name]}
-            lenses_methods = {
-                VersionedMethod(interface=l.node, implementation=l.node)
-                for w in cls_env.get_lenses.get(v.name, {}).values()
-                for l in w.values()
-                if l.node is not None
-            }
-            for m in methods.union(lenses_methods):
-                if not isinstance(m, VersionedMethod):
-                    if any(get_at(n) != get_at(m[0]) for n in m):
-                        self.show_error(
-                            m[0],
-                            f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
-                        )
-                    return
-                if not is_lens(m.implementation):
-                    self.__check_missing_method_lens(
-                        implementation=m.implementation,
-                        interface=m.interface,
-                        cls_env=cls_env,
-                    )
-                    self.__check_missing_field_lens(m.implementation, v.name, cls_env)
+        # Check for method conflicts
+        self.__check_method_conflicts(g, node, cls_env)
+
         method_lenses = cls_env.method_lenses
 
         for fun in (n for n in node.body if isinstance(n, FunctionDef)):
             lens_dec_node = get_decorators(fun, "get")
-            if lens_dec_node == 1:
+            if len(lens_dec_node) == 1:
                 frm, to, attr = (a.value for a in lens_dec_node[0].args)
-                field_lens = cls_env.get_lenses.find_lens(
-                    v_from=frm, v_to=to, field_name=attr
-                )
-                method_lens = cls_env.method_lenses.find_lens(
-                    v_from=frm, v_to=to, field_name=attr
-                )
-                if field_lens is None and method_lens is None:
+                if frm == to:
                     self.show_error(
                         lens_dec_node[0],
-                        f"Attribute {attr} is not defined in version {t} of this class",
+                        f"Lenses must be defined between different versions",
                     )
-                if all(m.interface.name != method for m in cls_env.methods[v]):
-                    self.show_error(
-                        lens_node,
-                        f"Method {method} is not defined in version {v} of this class",
+                    continue
+                if attr not in [f.name for f in cls_env.fields[to]]:
+                    m_to = next(
+                        (m for m in cls_env.methods[to] if m.interface.name == attr),
+                        None,
                     )
+                    if m_to is None:
+                        self.show_error(
+                            lens_dec_node[0],
+                            f"Attribute {attr} is not defined in version {to} of this class",
+                        )
+                    elif (m_ver := get_at(m_to.interface)) != to:
+                        self.show_error(
+                            lens_dec_node[0],
+                            f"No definition of method {attr} introduced in version {to}. Did you mean version {m_ver}?",
+                        )
+                    else:
+                        m_frm = next(
+                            (
+                                m
+                                for m in cls_env.methods[to]
+                                if m.interface.name == attr
+                            ),
+                            None,
+                        )
+                        if m_frm is None:
+                            self.show_error(
+                                lens_dec_node[0],
+                                f"Attribute {attr} is not defined in version {frm} of this class",
+                            )
+                        elif (m_ver := get_at(m_frm.interface)) != frm:
+                            self.show_error(
+                                lens_dec_node[0],
+                                f"No definition of method {attr} introduced in version {frm}. Did you mean version {m_ver}?",
+                            )
 
         for v, v_lenses in method_lenses.items():
             for method, m_lenses in v_lenses.items():
@@ -259,6 +261,36 @@ class LensCheckVisitor(BaseNodeVisitor):
                         m,
                         f"No path for field {field.name} in method {m.name} between versions {mver} and {v}",
                     )
+
+    def __check_method_conflicts(
+        self, g: "Graph", cls_ast: ClassDef, cls_env: "ClassEnvironment"
+    ):
+        from vpy.lib.lib_types import VersionedMethod
+        from vpy.lib.lookup import get_at, is_lens
+
+        for v in g.all():
+            methods = {m for m in cls_env.methods[v.name]}
+            lenses_methods = {
+                VersionedMethod(interface=l.node, implementation=l.node)
+                for w in cls_env.get_lenses.get(v.name, {}).values()
+                for l in w.values()
+                if l.node is not None
+            }
+            for m in methods.union(lenses_methods):
+                if not isinstance(m, VersionedMethod):
+                    if any(get_at(n) != get_at(m[0]) for n in m):
+                        self.show_error(
+                            m[0],
+                            f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
+                        )
+                    return
+                if not is_lens(m.implementation):
+                    self.__check_missing_method_lens(
+                        implementation=m.implementation,
+                        interface=m.interface,
+                        cls_env=cls_env,
+                    )
+                    self.__check_missing_field_lens(m.implementation, v.name, cls_env)
 
     def __check_missing_method_lens(
         self,

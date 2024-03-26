@@ -60,6 +60,18 @@ def target(file, version: VersionId, strict=False):
     print("\n".join(slices))
 
 
+def check(file):
+    spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
+    if spec is None or spec.loader is None:
+        exit("Error reading module.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    mod_ast, visitor = parse_module(module)
+    if visitor.all_failures != []:
+        return 0
+    return 1
+
+
 def argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -129,3 +141,6 @@ def cli_main():
 
     if args.new:
         new_version(args.input, args.replaces, args.upgrades, args.new)
+        exit()
+
+    exit(check(args.input))

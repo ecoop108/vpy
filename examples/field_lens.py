@@ -10,20 +10,21 @@ from vpy.decorators import at, get, run, version
 class C:
     @at("1")
     def m(self) -> int:
-        self.x = 1
-        self.m()
-        return self.x
+        # self.x = 1
+        return self.m()
+        # return self.x
 
+    # This case should be detected by the type system. Since this definition is used in version 1, and field y is
+    # referenced in it, a lens for field y is necessary.
     @at("2")
-    def m(self, z: str) -> str:
+    def b(self, z: str) -> str:
         self.y += z
-        self.m(z)
         return self.y
 
     @get("1", "2", "y")
     def lens_y(self) -> str:
-        return str(self.x)
+        return str()
 
     @get("1", "2", "m")
     def lens_m(self, f) -> int:
-        return int(f(z=self.x))
+        return int(f(z=""))

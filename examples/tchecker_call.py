@@ -7,6 +7,7 @@ class C:
 
     @at("1")
     def b(self) -> str:
+        x = 1
         return ""
 
     @at("2")

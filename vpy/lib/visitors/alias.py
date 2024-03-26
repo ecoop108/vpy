@@ -145,6 +145,7 @@ class AliasVisitor(ast.NodeVisitor):
             self.generic_visit(node)
 
     def visit_Attribute(self, node: Attribute):
+        # TODO: Revise this
         if isinstance(node.ctx, Load):
             existing = [
                 n
