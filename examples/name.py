@@ -31,6 +31,7 @@ class Name:
 
     @at("full")
     def get_full_name(self):
+        self.fullname = "x"
         return self.fullname
 
     @get("full", "init", "first")
@@ -66,7 +67,7 @@ class Name:
         return self.m() == 0
 
     @get("init", "full", "m")
-    def lens_m(self, f: Callable[[], int], x) -> bool:
+    def lens_m(self, f: Callable[[], int]) -> bool:
         return f() == 0
 
     # @get("full", "init", "m")

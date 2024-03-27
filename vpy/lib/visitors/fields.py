@@ -77,5 +77,7 @@ class FieldReferenceCollector(NodeVisitor):
     def visit_Attribute(self, node):
 
         if is_field(node, self.fields):
-            self.references.add(Field(name=node.attr, type=typeof_node(node)))
+            self.references.add(
+                Field(name=node.attr, type=typeof_node(node).simplify())
+            )
         self.visit(node.value)
