@@ -262,6 +262,16 @@ class LensCheckVisitor(BaseNodeVisitor):
                         f"No path for field {field.name} in method {m.name} between versions {mver} and {v}",
                     )
 
+        for m_v in cls_env.methods:
+            if m_v != v:
+                if any(me.implementation == m for me in cls_env.methods[m_v]):
+                    for field in cls_env.fields[v]:
+                        if cls_env.get_lenses.find_lens(m_v, v, field.name) is None:
+                            self.show_error(
+                                m,
+                                f"No path for field {field.name} in method {m.name} between versions {m_v} and {v}",
+                            )
+
     def __check_method_conflicts(
         self, g: "Graph", cls_ast: ClassDef, cls_env: "ClassEnvironment"
     ):
