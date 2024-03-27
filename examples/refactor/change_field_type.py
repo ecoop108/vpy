@@ -26,6 +26,6 @@ class C:
 
     # # This lens is required to rewrite method `m` because there is an assignment to field `x`.
 
-    @get("2", "1", "x")
-    def lens_x2(self) -> int:
-        return self.x[1]
+    # @get("2", "1", "x")
+    # def lens_x2(self) -> int:
+    #     return self.x[1]

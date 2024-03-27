@@ -252,6 +252,7 @@ class LensCheckVisitor(BaseNodeVisitor):
         cls_env: "ClassEnvironment",
     ):
         from vpy.lib.lookup import get_at
+        from vpy.lib.transformers.assignment import AssignLhsFieldCollector
 
         mver = get_at(m)
         if mver != v and mver not in cls_env.bases[v]:
@@ -265,11 +266,13 @@ class LensCheckVisitor(BaseNodeVisitor):
         for m_v in cls_env.methods:
             if m_v != v:
                 if any(me.implementation == m for me in cls_env.methods[m_v]):
-                    for field in cls_env.fields[v]:
-                        if cls_env.get_lenses.find_lens(m_v, v, field.name) is None:
+                    assign_visitor = AssignLhsFieldCollector()
+                    assign_visitor.visit(m)
+                    for ref in assign_visitor.references:
+                        if cls_env.get_lenses.find_lens(m_v, v, ref.field.name) is None:
                             self.show_error(
                                 m,
-                                f"No path for field {field.name} in method {m.name} between versions {m_v} and {v}",
+                                f"No path for field {ref.field.name} in method {m.name} between versions {v} and {m_v}",
                             )
 
     def __check_method_conflicts(

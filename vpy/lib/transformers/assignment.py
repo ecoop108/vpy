@@ -1,6 +1,8 @@
 from ast import (
+    AnnAssign,
     Assign,
     Attribute,
+    AugAssign,
     BinOp,
     Call,
     ClassDef,
@@ -39,6 +41,25 @@ class AssignLhsFieldCollector(ast.NodeVisitor):
     def __init__(self):
         self.__parent: ast.expr | None = None
         self.references: set[FieldReference] = set()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+        for n in node.body:
+            if (
+                isinstance(n, Assign)
+                or isinstance(n, AugAssign)
+                or isinstance(n, AnnAssign)
+            ):
+                self.visit(n)
+
+    def visit_Assign(self, node: Assign):
+        for target in node.targets:
+            self.visit(target)
+
+    def visit_AnnAssign(self, node: Assign):
+        self.visit(node.target)
+
+    def visit_AugAssign(self, node: Assign):
+        self.visit(node.target)
 
     def visit_Attribute(self, node: Attribute) -> Any:
         if is_obj_attribute(node):
@@ -237,7 +258,7 @@ class AssignTransformer(ast.NodeTransformer):
         unchanged.
         """
         ref_visitor = AssignLhsFieldCollector()
-        ref_visitor.visit(node.target)
+        ref_visitor.visit(node)
         if len(ref_visitor.references) == 0:
             return node
         else:
@@ -259,7 +280,7 @@ class AssignTransformer(ast.NodeTransformer):
         node if and only if the assignment has a value. Otherwise, the node is discarded.
         """
         ref_visitor = AssignLhsFieldCollector()
-        ref_visitor.visit(node.target)
+        ref_visitor.visit(node)
         if len(ref_visitor.references) == 0:
             return node
         if node.value:
@@ -274,8 +295,7 @@ class AssignTransformer(ast.NodeTransformer):
         exprs = []
         ref_visitor = AssignLhsFieldCollector()
         # We start by collecting all object field references in the left-hand side of the assignment
-        for target in node.targets:
-            ref_visitor.visit(target)
+        ref_visitor.visit(node)
         # If the assignment affects at least one object field then we need to rewrite it.
         if ref_visitor.references:
             # When we rewrite an assignment, we introduce new expressions in the AST (namely, calling the appropriate lens function(s)).
