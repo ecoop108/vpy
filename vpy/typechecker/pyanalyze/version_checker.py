@@ -25,10 +25,9 @@ class VersionCheckVisitor(BaseNodeVisitor):
 
     def visit_ClassDef(self, node):
 
-        from vpy.lib.utils import get_decorators, get_class_environment
+        from vpy.lib.utils import get_decorators
         from vpy.lib.lib_types import Version
 
-        self.cls_env = get_class_environment(node)
         version_dec = get_decorators(node, "version")
         versions = [(Version(d.keywords), d) for d in version_dec]
         for idx, (version, v_node) in enumerate(versions):
@@ -312,11 +311,11 @@ class LensCheckVisitor(BaseNodeVisitor):
                                             node=other_ref.node,
                                             e=f"No path for field {other_ref.field.name} in lens {lens.node.name} between versions {v} and {mver}",
                                         )
-                            elif not found:
-                                self.show_error(
-                                    node=ref.node,
-                                    e=f"Assignment to field {ref.field.name} in method {m.name} of version {mver} has no side effects in version {v}",
-                                )
+                    if not found:
+                        self.show_error(
+                            node=ref.node,
+                            e=f"Assignment to field {ref.field.name} in method {m.name} of version {mver} has no side effects in version {v}",
+                        )
                 else:
                     assert False
 
