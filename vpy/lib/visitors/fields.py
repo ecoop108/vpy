@@ -2,13 +2,16 @@ from ast import (
     Attribute,
     ClassDef,
     Constant,
+    Del,
     FunctionDef,
+    Load,
     Name,
     NodeVisitor,
+    Store,
 )
 from typing import Type
 
-from vpy.lib.lib_types import Field, VersionId
+from vpy.lib.lib_types import Field, FieldReference, VersionId
 from vpy.lib.utils import get_at, is_obj_attribute, typeof_node, is_field
 from vpy.typechecker.pyanalyze.value import AnySource, AnyValue, TypedValue
 
@@ -63,6 +66,29 @@ class ClassFieldCollector(NodeVisitor):
                 )
 
 
+class FieldNodeCollector(NodeVisitor):
+    """
+    Collect all field reference nodes in a class
+    """
+
+    def __init__(self, fields: set[Field], *, ctx=(Load, Store, Del)):
+        self.fields = fields
+        self.references: set[FieldReference] = set()
+        self.ctx = ctx
+
+    def visit_Attribute(self, node):
+        if is_field(node, self.fields):
+            if type(node.ctx) in self.ctx:
+                self.references.add(
+                    FieldReference(
+                        field=Field(name=node.attr, type=typeof_node(node).simplify()),
+                        node=node,
+                        ref_node=node,
+                    )
+                )
+        self.visit(node.value)
+
+
 class FieldReferenceCollector(NodeVisitor):
     """
     Collect all field references in a node.
@@ -70,14 +96,17 @@ class FieldReferenceCollector(NodeVisitor):
 
     # TODO: Fix this. Should take env as argument, check type of attr obj and
     # then check fields for that type.
-    def __init__(self, fields: set[Field], cls: Type | None = None):
+    def __init__(
+        self, fields: set[Field], cls: Type | None = None, *, ctx=(Load, Store, Del)
+    ):
         self.fields = fields
         self.references: set[Field] = set()
+        self.ctx = ctx
 
     def visit_Attribute(self, node):
-
         if is_field(node, self.fields):
-            self.references.add(
-                Field(name=node.attr, type=typeof_node(node).simplify())
-            )
+            if type(node.ctx) in self.ctx:
+                self.references.add(
+                    Field(name=node.attr, type=typeof_node(node).simplify())
+                )
         self.visit(node.value)

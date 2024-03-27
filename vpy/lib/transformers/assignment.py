@@ -55,10 +55,10 @@ class AssignLhsFieldCollector(ast.NodeVisitor):
         for target in node.targets:
             self.visit(target)
 
-    def visit_AnnAssign(self, node: Assign):
+    def visit_AnnAssign(self, node: AnnAssign):
         self.visit(node.target)
 
-    def visit_AugAssign(self, node: Assign):
+    def visit_AugAssign(self, node: AugAssign):
         self.visit(node.target)
 
     def visit_Attribute(self, node: Attribute) -> Any:
@@ -132,36 +132,35 @@ class AssignTransformer(ast.NodeTransformer):
 
     def __rw_assign(self, lhs: Attribute, rhs: ast.expr) -> list[ast.AST]:
         """
-        Rewrite a simple assignment statement of the form lhs = rhs (where lhs
-        is an object field) from version self.v_from to version self.v_target.
+        Rewrite a simple assignment statement of the form lhs = rhs (where lhs is an object field) from version
+        self.v_from to version self.v_target using the necessary put lenses.
         """
         exprs: list[ast.AST] = []
         obj_type = annotation_from_type_value(typeof_node(lhs.value))
         lenses = self.env.get_lenses[obj_type]
-        # Get first component of path between v_from and v_target
-        step_lens = lenses.find_lens(
-            v_from=self.v_from,
-            field_name=lhs.attr,
-            v_to=self.v_target,
-        )
-        # TODO: Typechecker should prevent this case.
-        if step_lens is None:
-            assert False
-        # Identity lens, no need to rewrite
-        if step_lens.node is None:
-            return [Assign(targets=[lhs], value=rhs)]
-        step_target = get_at(step_lens.node)
-        if step_target is None:
-            return [Assign(targets=[lhs], value=rhs)]
+        # # Get first component of path between v_from and v_target
+        # step_lens = lenses.find_lens(
+        #     v_from=self.v_target,
+        #     attr=lhs.attr,
+        #     v_to=self.v_from,
+        # )
+        # # Case where there is no lens
+        # if step_lens is None:
+        #     step_target = self.v_target
+        # else:
+        #     # Identity lens, no need to rewrite
+        #     if step_lens.node is None:
+        #         return [Assign(targets=[lhs], value=rhs)]
+        #     step_target = get_at(step_lens.node)
+        #     if step_target is None:
+        #         return [Assign(targets=[lhs], value=rhs)]
+
         # Iterate over lenses from step_target to v_from
         # to detect which attributes are affected
         # by a change to the field in lhs
-        for field, step_lenses in lenses[step_target].items():
-            if self.v_from not in step_lenses:
-                continue
-
+        for field, lens in lenses[self.v_from].get(self.v_target, dict()).items():
             # Get node of field lens function
-            lens_node = step_lenses[self.v_from].node
+            lens_node = lens.node
 
             # Identity lens
             if lens_node is None:
@@ -180,20 +179,17 @@ class AssignTransformer(ast.NodeTransformer):
                 )
                 > 0
             ):
-                # To reflect the side-effects of the assignment to `field`
-                # (defined in version `self.v_from`) in version `step_target` we
-                # use its corresponding put-lens. If none is defined, we can
-                # infer one from its corresponding get-lens (`lens_node`). We
-                # start by creating an `Attribute` of the form obj.lens, which
-                # will be used to produce a `Call` node.
+                # To reflect in `self.v_target` the side-effects of the assignment to `field` at version `self.v_from`,
+                # we use its corresponding put lens. If none is defined, we can infer one from its corresponding
+                # get lens (`lens_node`). We start by creating an `Attribute` of the form `obj.lens`, which will be used
+                # to produce a `Call` node.
                 put_lens_attr = create_obj_attr(
                     obj=lhs.value,
                     attr=lens_node.name,
                     obj_type=typeof_node(lhs.value),
                     attr_type=typeof_node(lens_node),
                 )
-                # Then we add the right-hand side of assignment (`rhs`) as a
-                # keyword argument.
+                # Then we add the right-hand side of assignment (`rhs`) as a keyword argument.
                 keywords = [keyword(arg=lhs.attr, value=rhs)]
 
                 # All other field references (`ref`) in `lens_node` are added as
@@ -213,22 +209,25 @@ class AssignTransformer(ast.NodeTransformer):
                         )
                         keywords.append(keyword(arg=ref.name, value=attr))
                 # Finally we create the call node in the form of
-                # `obj.lens(field=rhs, f0=obj.f0,..,fn=obj.fn)`.
+                # `obj.lens(field=rhs, f0=obj.f0,..,fN=obj.fN)`.
                 self_call = Call(func=put_lens_attr, args=[], keywords=keywords)
 
-                # Add put lens definition to class body if missing.
-                if not self.env.put_lenses[obj_type].has_lens(
-                    v_from=self.v_from,
-                    v_to=step_target,
-                    field_name=field,
+                # Add put lens definition to class body if it's not there yet.
+                if (
+                    self.env.put_lenses[obj_type].find_lens(
+                        v_from=self.v_from,
+                        v_to=self.v_target,
+                        attr=field,
+                    )
+                    is None
                 ):
                     put_lens = PutLens(
                         fields=self.env.fields[obj_type][self.v_from]
                     ).visit(copy.deepcopy(lens_node))
                     self.env.put_lenses[obj_type].add_lens(
                         v_from=self.v_from,
-                        field_name=field,
-                        v_to=step_target,
+                        attr=field,
+                        v_to=self.v_target,
                         lens_node=put_lens,
                     )
                     self.cls_ast.body.append(put_lens)
@@ -243,8 +242,7 @@ class AssignTransformer(ast.NodeTransformer):
                 lens_assign = Assign(targets=[lens_target], value=self_call)
                 exprs.append(lens_assign)
 
-            if step_target != self.v_target:
-                exprs = self.step_rw_assign(lhs, rhs, step_target)
+            # exprs = self.step_rw_assign(lhs, rhs, step_target)
 
         return exprs
 

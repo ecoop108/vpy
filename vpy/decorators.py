@@ -36,14 +36,6 @@ def version(name: str, replaces=[], upgrades=[]):
     return decorator_version
 
 
-def version(name: str, replaces=[], upgrades=[]):
-
-    def decorator_version(cl):
-        return cl
-
-    return decorator_version
-
-
 def run(v):
 
     def decorator_run(f):

@@ -1,41 +1,6 @@
 # This example shows the detection of missing field lenses.
-# To run the type checker, open the terminal pane in the editor and run:
-
-# vpy -i missing_field_lens.py -t init
 
 from vpy.decorators import at, get, version
-
-
-# There are two versions, with the different fields (version `init` has field `x` and version `full` has field `y`).
-# Version `full` replaces `init`, so method `m` must be available there. Since method `m` uses a field (`x`) to which
-# there is no lens, the type checker throws an error.
-
-
-# The same happens for method `t`: since `full` is a replacement version, then `t` must be available at version `init`,
-# so a lens for field `y` is required.
-@version(name="init")
-@version(name="full", replaces=["init"])
-class Name:
-    @at("init")
-    def m(self) -> str:
-        self.x = 1
-        return ""
-
-    @at("full")
-    def t(self) -> str:
-        self.y = 2
-        self.m() / 2
-        return ""
-
-    # Uncomment the following lines to fix the code.
-
-    @get("init", "full", "y")
-    def lens_y(self):
-        return self.x + 1
-
-    @get("full", "init", "x")
-    def lens_x(self):
-        return self.y + 1
 
 
 @version(name="1")
@@ -60,3 +25,55 @@ class C:
     # @get("2", "1", "x")
     # def lens_x2(self) -> int:
     #     return int(self.x)
+
+
+@version(name="1")
+@version(name="2", replaces=["1"])
+class C:
+    @at("1")
+    def __init__(self):
+        self.x = 1
+        self.z = "1"
+
+    # Field `x` is redefined as a str in version 2
+    @at("2")
+    def __init__(self):
+        self.y = 1
+        self.w = 3
+
+    @at("2")
+    def m(self):
+        # This method is available for version 1 so a get lens for field `y` is required
+        return self.y
+        # self.w = 3
+        # return self.y
+
+    @at("2")
+    def n(self):
+        # This method is available for version 1, so we need to check if this assignment produces any side effects in
+        # version 1.
+        self.y = 3
+        # To do so, we inspect all field lenses from version 2 to version 1 to find references of `y`. Then,
+        # we use their corresponding put lenses to rewrite the assignment. In this case, an assignment to field `y` will
+        # have side effects on fields `x` and `z` of version 1, since `y` is referenced in both these lenses. If there
+        # are other field references in these lenses, then we also require a get lens for each reference. In this case,
+        # the lens for field `z` also references field `w`, so we need a get lens for that field.
+        # When these conditions are met, this assignment is rewritten as:
+        # self.x = self.lens_x(y=3)
+        # self.z = self.lens_z(y=3, self.lens_w())
+
+    @get("2", "1", "x")
+    def lens_x(self) -> int:
+        return self.y
+
+    @get("2", "1", "z")
+    def lens_z(self) -> str:
+        return str(self.y + self.w)
+
+    # Uncomment this to fix the error from the return statement in method `m`
+    @get("1", "2", "y")
+    def lens_y(self) -> int: ...
+
+    # Uncomment this to fix the error from the assignment in method `n`
+    @get("1", "2", "w")
+    def lens_w(self) -> int: ...

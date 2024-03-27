@@ -6,13 +6,9 @@ from vpy.decorators import at, get, run, version
 class C:
 
     @at("1")
-    def b(self) -> str:
-        x = 1
-        return ""
-
+    def b(self) -> str: ...
     @at("2")
-    def b(self) -> bool:
-        return True
+    def b(self) -> bool: ...
 
     # This definition is not well typed since the result of method `b` in version 1 has type `str`
     @at("1")

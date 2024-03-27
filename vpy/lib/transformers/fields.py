@@ -47,9 +47,9 @@ class FieldTransformer(ast.NodeTransformer):
             ]:
                 return node
             lens = self.env.get_lenses[obj_type].find_lens(
-                v_from=self.v_from,
-                field_name=node.attr,
-                v_to=self.v_target,
+                v_from=self.v_target,
+                attr=node.attr,
+                v_to=self.v_from,
             )
             if lens is None:
                 assert False

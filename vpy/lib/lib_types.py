@@ -7,95 +7,13 @@ from collections import UserDict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple, NewType
-import networkx as nx
+from networkx import DiGraph
 
 if TYPE_CHECKING:
     from vpy.typechecker.pyanalyze.value import Value
 
 
 VersionId = NewType("VersionId", str)
-
-
-class Lens(NamedTuple):
-    v_from: VersionId
-    v_target: VersionId
-    field: str
-    node: FunctionDef | None
-
-
-class Lenses(UserDict[VersionId, dict[str, dict[VersionId, Lens]]]):
-    def find_lens(
-        self, v_from: VersionId, v_to: VersionId, field_name: str
-    ) -> Lens | None:
-        try:
-            return self.data[v_from][field_name][v_to]
-        except KeyError:
-            return None
-
-    def add_lens(
-        self,
-        v_from: VersionId,
-        v_to: VersionId,
-        field_name: str,
-        lens_node: FunctionDef | None,
-    ) -> None:
-        if v_from not in self.data:
-            self.data[v_from] = {}
-        if field_name not in self.data[v_from]:
-            self.data[v_from][field_name] = {}
-        self.data[v_from][field_name][v_to] = Lens(
-            v_from=v_from, v_target=v_to, field=field_name, node=lens_node
-        )
-        return None
-
-    def has_lens(self, v_from: VersionId, field_name: str, v_to: VersionId) -> bool:
-        try:
-            return v_to in self.data[v_from][field_name]
-        except KeyError:
-            return False
-
-
-class Field(NamedTuple):
-
-    name: str
-    type: "Value"
-
-
-class FieldReference(NamedTuple):
-    node: expr
-    field: Field
-    ref_node: Attribute
-
-
-class VersionedMethod(NamedTuple):
-    interface: FunctionDef
-    implementation: FunctionDef
-
-
-@dataclass
-class ClassEnvironment:
-    bases: dict[VersionId, set[VersionId]] = field(default_factory=dict)
-    fields: dict[VersionId, set[Field]] = field(default_factory=dict)
-    methods: dict[VersionId, set[VersionedMethod]] = field(default_factory=dict)
-    get_lenses: Lenses = field(default_factory=dict)
-    put_lenses: Lenses = field(default_factory=dict)
-    method_lenses: Lenses = field(default_factory=dict)
-    cls_ast: ClassDef = field(default_factory=dict)
-    versions: "Graph" = field(default_factory=dict)
-
-
-@dataclass
-class Environment:
-    bases: dict[str, dict[VersionId, set[VersionId]]] = field(default_factory=dict)
-    fields: dict[str, dict[VersionId, set[Field]]] = field(default_factory=dict)
-    methods: dict[str, dict[VersionId, set[VersionedMethod]]] = field(
-        default_factory=dict
-    )
-    get_lenses: dict[str, Lenses] = field(default_factory=dict)
-    put_lenses: dict[str, Lenses] = field(default_factory=dict)
-    method_lenses: dict[str, Lenses] = field(default_factory=dict)
-    cls_ast: dict[str, ClassDef] = field(default_factory=dict)
-    versions: dict[str, "Graph"] = field(default_factory=dict)
 
 
 class Version:
@@ -120,7 +38,7 @@ class Version:
         return f"Version {self.name}"
 
 
-class Graph(nx.DiGraph):
+class Graph(DiGraph):
     def __init__(self, *, graph: list[Version] = []):
         super().__init__()
         for version in graph:
@@ -191,3 +109,81 @@ class Graph(nx.DiGraph):
         for node in roots:
             tree.append(make_tree_node(self, node))
         return tree
+
+
+class Lens(NamedTuple):
+    v_from: VersionId
+    v_target: VersionId
+    attr: str
+    node: FunctionDef | None
+
+
+class Lenses(UserDict[VersionId, dict[VersionId, dict[str, Lens]]]):
+    def find_lens(
+        self, *, v_from: VersionId, v_to: VersionId, attr: str
+    ) -> Lens | None:
+        try:
+            return self.data[v_from][v_to][attr]
+        except KeyError:
+            return None
+
+    def add_lens(
+        self,
+        v_from: VersionId,
+        v_to: VersionId,
+        attr: str,
+        lens_node: FunctionDef | None,
+    ) -> None:
+
+        if v_from not in self.data:
+            self.data[v_from] = {}
+        if v_to not in self.data[v_from]:
+            self.data[v_from][v_to] = {}
+        if attr not in self.data[v_from][v_to]:
+            self.data[v_from][v_to][attr] = Lens(
+                v_from=v_from, v_target=v_to, attr=attr, node=lens_node
+            )
+        return None
+
+
+class Field(NamedTuple):
+
+    name: str
+    type: "Value"
+
+
+class FieldReference(NamedTuple):
+    node: expr
+    field: Field
+    ref_node: Attribute
+
+
+class VersionedMethod(NamedTuple):
+    interface: FunctionDef
+    implementation: FunctionDef
+
+
+@dataclass
+class ClassEnvironment:
+    bases: dict[VersionId, set[VersionId]] = field(default_factory=dict)
+    fields: dict[VersionId, set[Field]] = field(default_factory=dict)
+    methods: dict[VersionId, set[VersionedMethod]] = field(default_factory=dict)
+    get_lenses: Lenses = field(default_factory=Lenses)
+    put_lenses: Lenses = field(default_factory=Lenses)
+    method_lenses: Lenses = field(default_factory=Lenses)
+    cls_ast: ClassDef = field(default_factory=dict)
+    versions: "Graph" = field(default_factory=Graph)
+
+
+@dataclass
+class Environment:
+    bases: dict[str, dict[VersionId, set[VersionId]]] = field(default_factory=dict)
+    fields: dict[str, dict[VersionId, set[Field]]] = field(default_factory=dict)
+    methods: dict[str, dict[VersionId, set[VersionedMethod]]] = field(
+        default_factory=dict
+    )
+    get_lenses: dict[str, Lenses] = field(default_factory=dict)
+    put_lenses: dict[str, Lenses] = field(default_factory=dict)
+    method_lenses: dict[str, Lenses] = field(default_factory=dict)
+    cls_ast: dict[str, ClassDef] = field(default_factory=dict)
+    versions: dict[str, "Graph"] = field(default_factory=dict)

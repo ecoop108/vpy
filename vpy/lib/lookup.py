@@ -33,9 +33,9 @@ def field_lenses_lookup(g: Graph, cls_ast: ClassDef) -> Lenses:
                 else:
                     for field, lens_node in lens.items():
                         lenses.add_lens(
-                            v_from=k.name,
-                            field_name=field.name,
-                            v_to=t.name,
+                            v_from=t.name,
+                            v_to=k.name,
+                            attr=field.name,
                             lens_node=lens_node,
                         )
     return lenses
@@ -50,7 +50,7 @@ def method_lenses_lookup(g: Graph, cls_ast: ClassDef) -> Lenses:
                     for method, lens_node in lens.items():
                         lenses.add_lens(
                             v_from=k.name,
-                            field_name=method,
+                            attr=method,
                             v_to=t.name,
                             lens_node=lens_node,
                         )
@@ -75,7 +75,7 @@ def fields_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
 
 def methods_lookup(
     g: Graph, cls_ast: ClassDef, v: VersionId
-) -> set[VersionedMethod | tuple[FunctionDef]]:
+) -> set[VersionedMethod | tuple[FunctionDef, ...]]:
     """
     Returns the methods of a class available at version v. These may be
     explictly defined at v or inherited from some other related version(s).
@@ -83,7 +83,7 @@ def methods_lookup(
 
     class MethodCollector(NodeVisitor):
         def __init__(self):
-            self.methods: set[VersionedMethod | tuple[FunctionDef]] = set()
+            self.methods: set[VersionedMethod | tuple[FunctionDef, ...]] = set()
 
         def visit_ClassDef(self, node: ClassDef):
             self.generic_visit(node)

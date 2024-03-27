@@ -12,7 +12,7 @@ from vpy.lib.utils import parse_module, graph
 
 
 # TODO: Refactor this code, read errors from namecheckvisitor
-def graph_versions(file) -> list[list[dict[str, list[dict]]]]:
+def graph_versions(file) -> dict[str, list]:
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     if spec is None or spec.loader is None:
         exit("Error reading module.")
@@ -26,32 +26,31 @@ def graph_versions(file) -> list[list[dict[str, list[dict]]]]:
     return versions
 
 
-def list_versions(file) -> set[VersionId]:
+def list_versions(file) -> dict[str, set[VersionId]]:
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     if spec is None or spec.loader is None:
         exit("Error reading module.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module_ast = ast.parse(inspect.getsource(module))
-    versions: set[VersionId | list] = set()
+    versions: dict[str, set[VersionId]] = {}
     for node in module_ast.body:
         if isinstance(node, ast.ClassDef):
-            version_graph = graph(node)
-            versions = versions.union({v.name for v in version_graph})
+            versions[node.name] = {v.name for v in graph(node)}
     return versions
 
 
 def target(file, version: VersionId, strict=False):
-    if version not in list_versions(file):
+    if version not in {v for s in list_versions(file).values() for v in s}:
         exit(f"Invalid target {version}")
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
-        exit("Error reading module.")
+        exit(f"Error reading module from file {file}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     mod_ast, visitor = parse_module(module)
     if visitor.all_failures != []:
-        return
+        exit(1)
     if strict:
         mod_ast = ModuleStrictTransformer(version).visit(mod_ast)
     else:
@@ -63,10 +62,10 @@ def target(file, version: VersionId, strict=False):
 def check(file):
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
-        exit("Error reading module.")
+        exit(f"Error reading module from file {file}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    mod_ast, visitor = parse_module(module)
+    _, visitor = parse_module(module)
     if visitor.all_failures != []:
         return 0
     return 1
@@ -100,7 +99,10 @@ def argparser() -> argparse.ArgumentParser:
 
 
 def new_version(
-    file, replaces: list[VersionId] | None, upgrades: list[VersionId] | None, name: str
+    file,
+    replaces: list[VersionId] | None,
+    upgrades: list[VersionId] | None,
+    name: str,
 ):
     if replaces is None:
         replaces = []

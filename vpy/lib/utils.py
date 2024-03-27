@@ -9,6 +9,7 @@ from ast import (
     Module,
     Name,
     Store,
+    expr,
 )
 import ast
 from copy import deepcopy
@@ -39,10 +40,12 @@ from vpy.lib.lib_types import (
 import uuid
 
 
-def fields_in_function(node: FunctionDef, fields: set[Field]) -> set[Field]:
+def fields_in_function(
+    node: FunctionDef, fields: set[Field], *, ctx=(Load, Store, Del)
+) -> set[Field]:
     from vpy.lib.visitors.fields import FieldReferenceCollector
 
-    visitor = FieldReferenceCollector(fields)
+    visitor = FieldReferenceCollector(fields, ctx=ctx)
     visitor.visit(node)
     return visitor.references
 
@@ -75,7 +78,7 @@ def set_typeof_node(node: ast.AST, type_value: Value) -> None:
 
 
 def create_obj_attr(
-    obj: Attribute,
+    obj: expr,
     attr: str,
     ctx: Load | Store | Del = Load(),
     obj_type: Value = AnyValue(AnySource.default),
@@ -225,7 +228,7 @@ def is_lens(node: FunctionDef) -> bool:
     )
 
 
-def get_at(node: FunctionDef) -> VersionId | None:
+def get_at(node: FunctionDef) -> VersionId:
     """
     Returns the version id where method `node` is defined or None if no decorator is provided.
     """
@@ -237,7 +240,7 @@ def get_at(node: FunctionDef) -> VersionId | None:
         and d.func.id in ["get", "at", "put"]
     ]
     if len(version_decorators) == 0:
-        return None
+        assert False
     return VersionId(version_decorators[0].args[0].value)
 
 

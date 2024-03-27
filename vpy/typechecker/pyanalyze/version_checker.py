@@ -1,4 +1,4 @@
-from ast import ClassDef, Constant, FunctionDef, List
+from ast import ClassDef, Constant, FunctionDef, List, Load, Store
 from typing import TYPE_CHECKING
 
 from networkx import NetworkXNoCycle, find_cycle
@@ -6,23 +6,24 @@ from vpy.typechecker.pyanalyze.node_visitor import (
     BaseNodeVisitor,
     Failure,
 )
-from vpy.typechecker.pyanalyze.value import CanAssignError, Value
+from vpy.typechecker.pyanalyze.value import CallableValue, CanAssignError, Value
 from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
 
 if TYPE_CHECKING:
-    from vpy.lib.lib_types import VersionId, Environment, ClassEnvironment, Graph
+    from vpy.lib.lib_types import VersionId, ClassEnvironment, Graph
 
 
 class VersionCheckVisitor(BaseNodeVisitor):
-    def visit_Module(self, node) -> Value:
+
+    def visit_Module(self, node):
         for cls in node.body:
             if isinstance(cls, ClassDef):
                 self.visit_ClassDef(cls)
         if self.seen_errors:
             return
 
-    def visit_ClassDef(self, node) -> Value:
+    def visit_ClassDef(self, node):
 
         from vpy.lib.utils import get_decorators, get_class_environment
         from vpy.lib.lib_types import Version
@@ -106,7 +107,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
         for fn in (n for n in node.body if isinstance(n, FunctionDef)):
             self.visit(fn)
 
-    def visit_FunctionDef(self, node) -> Value:
+    def visit_FunctionDef(self, node):
         from vpy.lib.utils import get_at, get_decorators
 
         at_dec = get_decorators(node, "at")
@@ -147,6 +148,7 @@ class LensCheckVisitor(BaseNodeVisitor):
         )
         version_check_visitor.check()
         if version_check_visitor.all_failures:
+            self.all_failures = version_check_visitor.all_failures
             return version_check_visitor.all_failures
         kwargs = NameCheckVisitor.prepare_constructor_kwargs({})
         options = kwargs["checker"].options
@@ -165,6 +167,7 @@ class LensCheckVisitor(BaseNodeVisitor):
             self.name_check_visitor.check()
             if self.name_check_visitor.all_failures:
                 self.all_failures = self.name_check_visitor.all_failures
+                return self.name_check_visitor.all_failures
             self.env = get_module_environment(self.tree)
             self.visit(self.tree)
             attribute_checker.tree = self.tree
@@ -252,28 +255,70 @@ class LensCheckVisitor(BaseNodeVisitor):
         cls_env: "ClassEnvironment",
     ):
         from vpy.lib.lookup import get_at
-        from vpy.lib.transformers.assignment import AssignLhsFieldCollector
+        from vpy.lib.visitors.fields import FieldNodeCollector
 
         mver = get_at(m)
         if mver != v and mver not in cls_env.bases[v]:
-            for field in cls_env.fields[mver]:
-                if cls_env.get_lenses.find_lens(mver, v, field.name) is None:
-                    self.show_error(
-                        m,
-                        f"No path for field {field.name} in method {m.name} between versions {mver} and {v}",
-                    )
-
-        for m_v in cls_env.methods:
-            if m_v != v:
-                if any(me.implementation == m for me in cls_env.methods[m_v]):
-                    assign_visitor = AssignLhsFieldCollector()
-                    assign_visitor.visit(m)
-                    for ref in assign_visitor.references:
-                        if cls_env.get_lenses.find_lens(m_v, v, ref.field.name) is None:
-                            self.show_error(
-                                m,
-                                f"No path for field {ref.field.name} in method {m.name} between versions {v} and {m_v}",
-                            )
+            ref_visitor = FieldNodeCollector(fields=cls_env.fields[mver])
+            ref_visitor.visit(m)
+            for ref in ref_visitor.references:
+                # Check if a get lens for this attribute exists
+                if isinstance(ref.ref_node.ctx, Load):
+                    if (
+                        cls_env.get_lenses.find_lens(
+                            v_from=v, v_to=mver, attr=ref.field.name
+                        )
+                        is None
+                    ):
+                        self.show_error(
+                            m,
+                            f"No path for field {ref.field.name} in method {m.name} between versions {v} and {mver}",
+                        )
+                elif isinstance(ref.ref_node.ctx, Store):
+                    found = False
+                    # Iterate all lenses to find references to this attribute
+                    for lens in (
+                        cls_env.get_lenses.get(mver, dict()).get(v, dict()).values()
+                    ):
+                        lens_ref_visitor = FieldNodeCollector(
+                            fields=cls_env.fields[mver]
+                        )
+                        if lens.node is None:
+                            continue
+                        lens_ref_visitor.visit(lens.node)
+                        if any(
+                            r.field.name == ref.field.name
+                            for r in lens_ref_visitor.references
+                        ):
+                            found = True
+                            # If there are multiple attributes referenced in the lens, we need a get lens for each of
+                            # those
+                            if len(lens_ref_visitor.references) > 1:
+                                other_refs = [
+                                    r
+                                    for r in lens_ref_visitor.references
+                                    if r.field.name != ref.field.name
+                                ]
+                                for other_ref in other_refs:
+                                    if (
+                                        cls_env.get_lenses.find_lens(
+                                            v_from=v,
+                                            v_to=mver,
+                                            attr=other_ref.field.name,
+                                        )
+                                        is None
+                                    ):
+                                        self.show_error(
+                                            node=other_ref.node,
+                                            e=f"No path for field {other_ref.field.name} in lens {lens.node.name} between versions {v} and {mver}",
+                                        )
+                            elif not found:
+                                self.show_error(
+                                    node=ref.node,
+                                    e=f"Assignment to field {ref.field.name} in method {m.name} of version {mver} has no side effects in version {v}",
+                                )
+                else:
+                    assert False
 
     def __check_method_conflicts(
         self, g: "Graph", cls_ast: ClassDef, cls_env: "ClassEnvironment"
@@ -309,7 +354,7 @@ class LensCheckVisitor(BaseNodeVisitor):
         self,
         interface: FunctionDef,
         implementation: FunctionDef,
-        cls_env: "Environment",
+        cls_env: "ClassEnvironment",
     ):
         """Check for missing method lens between the interface definition and its corresponding implementation (which will be used by clients in the context of get_at(m))"""
         from vpy.lib.lookup import get_at
@@ -320,16 +365,21 @@ class LensCheckVisitor(BaseNodeVisitor):
         m_v = get_at(implementation)
         if mdef_v == m_v:
             return
-        mdef_sig = self.name_check_visitor.visit(interface).signature
-        m_sig = self.name_check_visitor.visit(implementation).signature
+        mdef_val = self.name_check_visitor.visit(interface)
+        m_val = self.name_check_visitor.visit(implementation)
+        if not isinstance(mdef_val, CallableValue) or not isinstance(
+            m_val, CallableValue
+        ):
+            assert False
         if (
             cls_env.method_lenses.find_lens(
-                v_from=mdef_v, v_to=m_v, field_name=implementation.name
+                v_from=mdef_v, v_to=m_v, attr=implementation.name
             )
             is None
         ):
             if isinstance(
-                mdef_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
+                mdef_val.signature.can_assign(m_val.signature, self.name_check_visitor),
+                CanAssignError,
             ):
                 self.show_error(
                     implementation,

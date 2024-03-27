@@ -14,6 +14,7 @@ from ast import (
     Delete,
     Expr,
     For,
+    List,
     Load,
     Name,
     NodeVisitor,
@@ -214,15 +215,18 @@ class ExtractLocalVar(ast.NodeTransformer):
 
     def visit_Return(self, node: Return) -> Any:
         expr_before = []
-        field_visitor = FieldReplacementVisitor(self)
-        field_visitor.visit(node.value)
-        replacements = field_visitor.fields
-        for idx, (attr, var) in enumerate(replacements.items()):
-            if all(v != var for i, v in enumerate(replacements.values()) if i < idx):
-                var_assign = Assign(targets=[var], value=attr)
-                expr_before.append(var_assign)
-            visitor = RewriteName(src=attr, target=var)
-            node.value = visitor.visit(node.value)
+        if node.value is not None:
+            field_visitor = FieldReplacementVisitor(self)
+            field_visitor.visit(node.value)
+            replacements = field_visitor.fields
+            for idx, (attr, var) in enumerate(replacements.items()):
+                if all(
+                    v != var for i, v in enumerate(replacements.values()) if i < idx
+                ):
+                    var_assign = Assign(targets=[var], value=attr)
+                    expr_before.append(var_assign)
+                visitor = RewriteName(src=attr, target=var)
+                node.value = visitor.visit(node.value)
         return expr_before + [node]
 
     def visit_If(self, node):
@@ -333,7 +337,7 @@ class AssignAfterSideEffects(NodeVisitor):
         self.v_from = v_from
         self.aliases = aliases
         self.replacements = replacements
-        self.assignments = []
+        self.assignments: list[Assign] = []
 
     def visit_Attribute(self, node: Attribute):
         if isinstance(node.ctx, Load) and node in self.aliases:
@@ -356,7 +360,7 @@ class AssignAfterSideEffects(NodeVisitor):
         for el in node.elts:
             self.visit(el)
 
-    def visit_List(self, node: Tuple):
+    def visit_List(self, node: List):
         for el in node.elts:
             self.visit(el)
 
@@ -380,7 +384,7 @@ class AssignAfterCall(NodeVisitor):
         self.v_from = v_from
         self.aliases = aliases
         self.replacements = replacements
-        self.assignments = []
+        self.assignments: list[Assign] = []
 
     def visit_Call(self, node: Call) -> Any:
         collected_args: list[Attribute] = []
@@ -438,7 +442,7 @@ class AssignAfterCall(NodeVisitor):
 
 class FieldReplacementVisitor(NodeVisitor):
     def __init__(self, visitor: ExtractLocalVar | AssignAfterCall):
-        self.fields = {}
+        self.fields: dict[Attribute, Name] = {}
         self.visitor = visitor
 
     def visit_Attribute(self, node: Attribute) -> Any:
