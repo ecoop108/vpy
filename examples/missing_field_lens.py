@@ -36,3 +36,27 @@ class Name:
     @get("full", "init", "x")
     def lens_x(self):
         return self.y + 1
+
+
+@version(name="1")
+@version(name="2", replaces=["1"])
+class C:
+    @at("1")
+    def m(self):
+        self.x = 1
+
+    # Field `x` is redefined as a str in version 2, thus we need a lens from version 1 for this field.
+    @at("2")
+    def m(self):
+        self.x = "1"
+        self.x += "0"
+
+    # @get("1", "2", "x")
+    # def lens_x1(self) -> str:
+    #     return str(self.x)
+
+    # This lens is required to rewrite method `m` of version `2` because there is an assignment to field `x`.
+
+    # @get("2", "1", "x")
+    # def lens_x2(self) -> int:
+    #     return int(self.x)
