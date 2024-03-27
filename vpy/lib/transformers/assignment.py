@@ -138,22 +138,6 @@ class AssignTransformer(ast.NodeTransformer):
         exprs: list[ast.AST] = []
         obj_type = annotation_from_type_value(typeof_node(lhs.value))
         lenses = self.env.get_lenses[obj_type]
-        # # Get first component of path between v_from and v_target
-        # step_lens = lenses.find_lens(
-        #     v_from=self.v_target,
-        #     attr=lhs.attr,
-        #     v_to=self.v_from,
-        # )
-        # # Case where there is no lens
-        # if step_lens is None:
-        #     step_target = self.v_target
-        # else:
-        #     # Identity lens, no need to rewrite
-        #     if step_lens.node is None:
-        #         return [Assign(targets=[lhs], value=rhs)]
-        #     step_target = get_at(step_lens.node)
-        #     if step_target is None:
-        #         return [Assign(targets=[lhs], value=rhs)]
 
         # Iterate over lenses from step_target to v_from
         # to detect which attributes are affected
