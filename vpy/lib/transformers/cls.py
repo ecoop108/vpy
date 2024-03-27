@@ -55,7 +55,6 @@ class ClassTransformer(NodeTransformer):
             node
         )
         node = RemoveDecoratorsTransformer().visit(node)
-        node.name += "_" + self.v
         if node.body == []:
             node.body.append(Pass())
         return node
@@ -155,7 +154,7 @@ class SelectMethodsTransformer(NodeTransformer):
 
     def visit_FunctionDef(self, node: FunctionDef) -> FunctionDef | None:
         if all(
-            node not in (m.implementation, m.interface)
+            node != m.implementation
             for m in self.env.methods[self.cls_ast.name][self.v]
         ):
             return None
