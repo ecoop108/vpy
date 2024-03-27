@@ -209,7 +209,7 @@ class LensCheckVisitor(BaseNodeVisitor):
                         m_frm = next(
                             (
                                 m
-                                for m in cls_env.methods[to]
+                                for m in cls_env.methods[frm]
                                 if m.interface.name == attr
                             ),
                             None,
