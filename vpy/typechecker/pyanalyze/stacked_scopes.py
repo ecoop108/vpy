@@ -748,9 +748,13 @@ class Scope:
             )
             # Tag lookups in the parent scope with this scope node, so we
             # don't carry over constraints across scopes.
-            return val, scope, EMPTY_ORIGIN
-        else:
-            return UNINITIALIZED_VALUE, None, EMPTY_ORIGIN
+            if val is not UNINITIALIZED_VALUE:
+                return val, scope, EMPTY_ORIGIN
+        if version is not None:
+            val, scope, origin = self.get(None, varname, node, state, from_parent_scope)
+            if val is not UNINITIALIZED_VALUE:
+                return val, scope, origin
+        return UNINITIALIZED_VALUE, None, EMPTY_ORIGIN
 
     def get_local(
         self,

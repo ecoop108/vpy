@@ -1876,7 +1876,18 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             self._generic_visit_list(node.bases)
             self._generic_visit_list(node.keywords)
             value = self._visit_class_and_get_value(node, class_obj)
-        value, _ = self._set_name_in_scope(node.name, node, value)
+        from vpy.lib.utils import graph
+
+        g = graph(node)
+        if len(g) == 0:
+            value, _ = self._set_name_in_scope(node.name, node, value)
+        else:
+            if node.name in self.scopes.current_scope().variables[None]:
+                del self.scopes.current_scope().variables[None][node.name]
+            for v in g.all():
+                self.version = v.name
+                value, _ = self._set_name_in_scope(node.name, node, value)
+            self.version = None
         return value
 
     def _get_local_object(self, name: str, node: ast.AST) -> Value:
@@ -1991,8 +2002,12 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                         is_classmethod = True
                     elif val is staticmethod:
                         is_staticmethod = True
-                    elif sys.version_info < (3, 11) and val is (
-                        asyncio.coroutine  # static analysis: ignore[undefined_attribute]
+                    elif (
+                        sys.version_info < (3, 11)
+                        and val
+                        is (
+                            asyncio.coroutine  # static analysis: ignore[undefined_attribute]
+                        )
                     ):
                         is_decorated_coroutine = True
                     elif val is real_overload or val is overload:
