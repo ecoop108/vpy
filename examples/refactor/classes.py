@@ -12,9 +12,9 @@ class A: ...
 class B: ...
 
 
-@run("3")
+@run("2")
 def main():
-    print(1)
+    print(B())
 
 
 if __name__ == "__main__":
