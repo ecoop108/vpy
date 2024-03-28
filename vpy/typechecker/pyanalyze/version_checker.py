@@ -15,16 +15,20 @@ if TYPE_CHECKING:
 
 
 class VersionCheckVisitor(BaseNodeVisitor):
-
     def visit_Module(self, node):
+        versions = set()
         for cls in node.body:
+            # Visit class node and collect version definitions
             if isinstance(cls, ClassDef):
                 self.visit_ClassDef(cls)
+                versions = versions.union(self.graph)
+            else:
+                self.graph = versions
+                self.visit(cls)
         if self.seen_errors:
             return
 
     def visit_ClassDef(self, node):
-
         from vpy.lib.utils import get_decorators
         from vpy.lib.lib_types import Version
 
@@ -112,7 +116,8 @@ class VersionCheckVisitor(BaseNodeVisitor):
         at_dec = get_decorators(node, "at")
         get_dec = get_decorators(node, "get")
         put_dec = get_decorators(node, "put")
-        version_dec = at_dec + get_dec + put_dec
+        run_dec = get_decorators(node, "run")
+        version_dec = at_dec + get_dec + put_dec + run_dec
         # TODO: Create error code for this
         if len(version_dec) == 0:
             self.show_error(node, "Missing version annotation")
