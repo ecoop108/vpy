@@ -1863,7 +1863,12 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> Value:
         # self._generic_visit_list(node.decorator_list)
         # Check that version graph is well formed
+        from vpy.lib.utils import graph
+
+        g = graph(node)
+        self.version = next((v.name for v in g.all()), None)
         class_obj = self._get_current_class_object(node)
+        self.version = None
         if sys.version_info >= (3, 12) and node.type_params:
             ctx = self.scopes.add_scope(
                 ScopeType.annotation_scope, scope_node=node, scope_object=class_obj
@@ -1876,17 +1881,17 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             self._generic_visit_list(node.bases)
             self._generic_visit_list(node.keywords)
             value = self._visit_class_and_get_value(node, class_obj)
-        from vpy.lib.utils import graph
 
-        g = graph(node)
         if len(g) == 0:
             value, _ = self._set_name_in_scope(node.name, node, value)
         else:
-            if node.name in self.scopes.current_scope().variables[None]:
-                del self.scopes.current_scope().variables[None][node.name]
             for v in g.all():
                 self.version = v.name
-                value, _ = self._set_name_in_scope(node.name, node, value)
+                value, _ = self._set_name_in_scope(
+                    node.name, node, KnownValue(class_obj)
+                )
+            if node.name in self.scopes.current_scope().variables[None]:
+                del self.scopes.current_scope().variables[None][node.name]
             self.version = None
         return value
 
