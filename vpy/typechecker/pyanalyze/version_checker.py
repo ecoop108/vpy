@@ -172,7 +172,7 @@ class LensCheckVisitor(BaseNodeVisitor):
             attribute_checker.tree = self.tree
             return self.all_failures
 
-    def visit_ClassDef(self, node) -> Value:
+    def visit_ClassDef(self, node):
         from vpy.lib.utils import graph, get_class_environment, get_decorators, get_at
 
         cls_env = get_class_environment(node)
@@ -228,8 +228,8 @@ class LensCheckVisitor(BaseNodeVisitor):
                             )
 
         for v, v_lenses in method_lenses.items():
-            for method, m_lenses in v_lenses.items():
-                for t, lens in m_lenses.items():
+            for t, t_method_lenses in v_lenses.items():
+                for method, lens in t_method_lenses.items():
                     lens_node = lens.node
                     if lens_node is None:
                         continue
