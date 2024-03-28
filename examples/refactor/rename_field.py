@@ -8,6 +8,7 @@ class C:
     def __init__(self):
         self.x = 1
 
+    # In version 2, field `x` is renamed to `y`
     @at("2")
     def __init__(self):
         self.y = 1
@@ -16,6 +17,7 @@ class C:
     def m(self):
         return self.y
 
+    # The renaming of field `x` to `y` is expressed by the lenses below.
     @get("2", "1", "x")
     def lens_x(self) -> int:
         return self.y

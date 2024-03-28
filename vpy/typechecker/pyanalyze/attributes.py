@@ -613,7 +613,7 @@ def _get_attribute_from_mro(
                             f = next(
                                 m.interface
                                 for m in ctx.env.methods[typ.__name__][ctx.version]
-                                if m.interface.name == ctx.attr
+                                if m.name == ctx.attr
                             )
                             # TODO: Add value from f here
                             f_ver = get_at(f)

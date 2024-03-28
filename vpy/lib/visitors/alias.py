@@ -104,7 +104,7 @@ class AliasVisitor(ast.NodeVisitor):
                 method = next(
                     m.implementation
                     for m in self.env.methods[obj_type][self.v_from]
-                    if m.implementation.name == mname
+                    if m.name == mname
                 )
                 if method is not None:
                     visitor = AliasVisitor(g, cls_ast, self.env, self.v_from)

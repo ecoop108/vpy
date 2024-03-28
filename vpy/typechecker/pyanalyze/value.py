@@ -673,7 +673,7 @@ class UnboundMethodValue(Value):
                 m = next(
                     m.interface
                     for m in self.env.methods[typ.__name__][self.version]
-                    if m.interface.name
+                    if m.name
                     == (
                         self.attr_name
                         if self.secondary_attr_name is None

@@ -8,6 +8,7 @@ from vpy.lib.utils import (
     get_at,
 )
 from vpy.lib.visitors.fields import ClassFieldCollector
+from vpy.lib.visitors.methods import MethodCollector
 
 
 def base_versions(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionId]:
@@ -102,6 +103,7 @@ def methods_lookup(
 # Auxiliary methods
 
 
+# TODO: Refactor this, v should be first arg to decorator (at)
 def __lenses_at(
     g: Graph, cls_ast: ClassDef, v: VersionId
 ) -> dict[str, dict[VersionId, FunctionDef]]:
@@ -128,12 +130,35 @@ def __lenses_at(
     return lenses
 
 
+def __lenses_at_m(
+    g: Graph, cls_ast: ClassDef, v: VersionId
+) -> dict[str, dict[VersionId, FunctionDef]]:
+    """
+    Returns the lenses explicitly defined at version v.
+    """
+    lenses: dict[str, dict[VersionId, FunctionDef]] = {}
+    for method in cls_ast.body:
+        if isinstance(method, FunctionDef):
+            decorators = get_decorators(method, "get")
+            if len(decorators) > 0:
+                decorator = decorators[0]
+                at, target, field = [
+                    a.value for a in decorator.args if isinstance(a, ast.Constant)
+                ]
+                if v == at:
+                    if field not in lenses:
+                        lenses[field] = {}
+                    lenses[field][target] = method
+    return lenses
+
+
 def __field_lens_path_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef, field: str
 ) -> list[FunctionDef] | None:
     """
     Returns a list of lenses to rewrite field from version v to version t
     """
+    # TODO: Fix this after refactoring __lenses_at
     lenses = __lenses_at(g=g, cls_ast=cls_ast, v=v)
     if field not in lenses:
         bases_v = base_versions(g, cls_ast, v)
@@ -169,14 +194,15 @@ def __field_lens_path_lookup(
 def __method_lens_path_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef, method: str
 ) -> list[dict[str, FunctionDef]] | None:
+    # TODO: Do we need the method name in the result?
     """
-    Returns a list of lenses to rewrite method from version v to version t
+    Returns a list of lenses to rewrite method from version v to version t.
     """
-    lenses = __lenses_at(g=g, cls_ast=cls_ast, v=t)
+    lenses = __lenses_at_m(g=g, cls_ast=cls_ast, v=v)
     if method not in lenses:
         return None
-    if v in lenses[method]:
-        return [{method: lenses[method][v]}]
+    if t in lenses[method]:
+        return [{method: lenses[method][t]}]
     else:
         for w, lens in lenses[method].items():
             result = [{method: lens}]
@@ -202,7 +228,7 @@ def __field_lens_lookup(
     bases_v = base_versions(g, cls_ast, v)
     bases_t = base_versions(g, cls_ast, t)
     for field in fields_v:
-        if bases_v <= bases_t:
+        if bases_v <= bases_t or field in fields_lookup(g, cls_ast, t):
             result[field] = None
         else:
             path = __field_lens_path_lookup(g, v, t, cls_ast, field.name)
@@ -335,7 +361,9 @@ def _method_lookup(
         else:
             return um
     if interface is not None and implementation is not None:
-        return VersionedMethod(interface=interface, implementation=implementation)
+        return VersionedMethod(
+            name=m, interface=interface, implementation=implementation
+        )
     return None
 
 
@@ -344,18 +372,7 @@ def methods_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[FunctionDef]:
     Returns the methods of a class explicitly defined at version v.
     """
 
-    class MethodCollector(NodeVisitor):
-        def __init__(self):
-            self.methods = set()
-
-        def visit_ClassDef(self, node: ClassDef):
-            self.generic_visit(node)
-
-        def visit_FunctionDef(self, node: FunctionDef):
-            if not is_lens(node) and get_at(node) == v:
-                self.methods.add(node)
-
-    visitor = MethodCollector()
+    visitor = MethodCollector(v=v)
     visitor.visit(cls_ast)
     return visitor.methods
 
@@ -369,11 +386,18 @@ def fields_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
     for m in methods:
         visitor.visit(m)
     parent_fields = {f for p in g.parents(v) for f in fields_at(g, cls_ast, p)}
-    return {
-        f
-        for f in visitor.fields
-        if all(
-            f.name != pf.name or f.type.simplify() != pf.type.simplify()
-            for pf in parent_fields
-        )
-    }
+    result = set()
+    # Iterate over fields at v and check if they are inherited or introduced here.
+    for field, explicit in visitor.fields.items():
+        if explicit:
+            result.add(field)
+        else:
+            for pf in parent_fields:
+                if field.name == pf.name:
+                    # Found an inherited field
+                    break
+            else:
+                # If no inherited field was found we add it to the result
+                result.add(field)
+
+    return result

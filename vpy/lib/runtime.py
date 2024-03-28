@@ -5,17 +5,6 @@ from vpy.lib.slice import eval_slice
 from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
 
 
-class ReplaceCallsTransformer(ast.NodeTransformer):
-    def __init__(self, cls_name, v):
-        self.cls_name = cls_name
-        self.v = v
-
-    def visit_Name(self, node):
-        if node.id == self.cls_name:
-            node.id = self.cls_name + "_" + self.v
-        return node
-
-
 def run(fun, v, *args, **kwargs):
     # grab the module where fun is defined
     mod = inspect.getmodule(fun)
@@ -29,8 +18,6 @@ def run(fun, v, *args, **kwargs):
     # rewrite function calls
     src = inspect.getsource(fun)
     f_ast = ast.parse(src)
-    for cls_name in classes:
-        f_ast = ReplaceCallsTransformer(cls_name, v).visit(f_ast)
     f_ast = RemoveDecoratorsTransformer().visit(f_ast)
 
     # register new classes

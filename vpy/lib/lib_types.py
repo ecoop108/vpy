@@ -134,14 +134,16 @@ class Lenses(UserDict[VersionId, dict[VersionId, dict[str, Lens]]]):
         attr: str,
         lens_node: FunctionDef | None,
     ) -> None:
+        from vpy.lib.utils import get_to
 
         if v_from not in self.data:
             self.data[v_from] = {}
         if v_to not in self.data[v_from]:
             self.data[v_from][v_to] = {}
         if attr not in self.data[v_from][v_to]:
+            target = get_to(lens_node) if lens_node is not None else v_to
             self.data[v_from][v_to][attr] = Lens(
-                v_from=v_from, v_target=v_to, attr=attr, node=lens_node
+                v_from=v_from, v_target=target, attr=attr, node=lens_node
             )
         return None
 
@@ -151,6 +153,14 @@ class Field(NamedTuple):
     name: str
     type: "Value"
 
+    def __eq__(self, __value: object) -> TYPE_CHECKING:
+        if isinstance(__value, Field):
+            return (
+                self.name == __value.name
+                and self.type.simplify() == __value.type.simplify()
+            )
+        return False
+
 
 class FieldReference(NamedTuple):
     node: expr
@@ -159,6 +169,7 @@ class FieldReference(NamedTuple):
 
 
 class VersionedMethod(NamedTuple):
+    name: str
     interface: FunctionDef
     implementation: FunctionDef
 
@@ -171,7 +182,6 @@ class ClassEnvironment:
     get_lenses: Lenses = field(default_factory=Lenses)
     put_lenses: Lenses = field(default_factory=Lenses)
     method_lenses: Lenses = field(default_factory=Lenses)
-    cls_ast: ClassDef = field(default_factory=dict)
     versions: "Graph" = field(default_factory=Graph)
 
 
@@ -185,5 +195,4 @@ class Environment:
     get_lenses: dict[str, Lenses] = field(default_factory=dict)
     put_lenses: dict[str, Lenses] = field(default_factory=dict)
     method_lenses: dict[str, Lenses] = field(default_factory=dict)
-    cls_ast: dict[str, ClassDef] = field(default_factory=dict)
     versions: dict[str, "Graph"] = field(default_factory=dict)

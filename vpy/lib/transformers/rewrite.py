@@ -448,10 +448,16 @@ class FieldReplacementVisitor(NodeVisitor):
     def visit_Attribute(self, node: Attribute) -> Any:
         if isinstance(node.ctx, Load):
             obj_type = annotation_from_type_value(typeof_node(node.value))
-            if obj_type in self.visitor.env.fields and is_field(
-                node,
-                self.visitor.env.fields[obj_type][self.visitor.v_from],
-            ):
+            fields = self.visitor.env.fields.get(obj_type, {}).get(
+                self.visitor.v_from, {}
+            )
+            lens = self.visitor.env.get_lenses.get(obj_type).find_lens(
+                v_from=self.visitor.v_target, v_to=self.visitor.v_from, attr=node.attr
+            )
+            # If this is a field (e.g. not a method call) and there is a lens (other than the identity), we need to
+            # extract the field to a local variable
+            if is_field(node, fields) and lens is not None and lens.node is not None:
+
                 if node in self.visitor.aliases:
                     if self.visitor.aliases[node] in self.fields:
                         self.fields[node] = self.fields[self.visitor.aliases[node]]

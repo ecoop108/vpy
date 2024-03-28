@@ -167,7 +167,6 @@ def get_class_environment(cls_ast: ClassDef):
     env.get_lenses = field_lenses_lookup(g, cls_ast)
     env.put_lenses = Lenses()
     env.method_lenses = method_lenses_lookup(g, cls_ast)
-    env.cls_ast = deepcopy(cls_ast)
     env.versions = g
     for k in g.all():
         env.methods[k.name] = {  # type: ignore
@@ -189,7 +188,6 @@ def get_module_environment(mod_ast: Module):
             env.get_lenses[node.name] = cls_env.get_lenses
             env.put_lenses[node.name] = cls_env.put_lenses
             env.method_lenses[node.name] = cls_env.method_lenses
-            env.cls_ast[node.name] = deepcopy(node)
             env.versions[node.name] = g
             env.methods[node.name] = cls_env.methods
             env.bases[node.name] = cls_env.bases
@@ -230,18 +228,34 @@ def is_lens(node: FunctionDef) -> bool:
 
 def get_at(node: FunctionDef) -> VersionId:
     """
-    Returns the version id where method `node` is defined or None if no decorator is provided.
+    Returns the version id where method `node` is defined.
     """
     version_decorators = [
         d
         for d in node.decorator_list
         if isinstance(d, Call)
         and isinstance(d.func, Name)
-        and d.func.id in ["get", "at", "put"]
+        and d.func.id in ["get", "at", "put", "run"]
     ]
     if len(version_decorators) == 0:
         assert False
     return VersionId(version_decorators[0].args[0].value)
+
+
+def get_to(lens: FunctionDef) -> VersionId:
+    """
+    Returns the version id to where `lens` is targetting.
+    """
+    version_decorators = [
+        d
+        for d in lens.decorator_list
+        if isinstance(d, Call)
+        and isinstance(d.func, Name)
+        and d.func.id in ["get", "put"]
+    ]
+    if len(version_decorators) == 0:
+        assert False
+    return VersionId(version_decorators[0].args[1].value)
 
 
 def get_decorators(node: FunctionDef, dec_name: str) -> list[Call]:

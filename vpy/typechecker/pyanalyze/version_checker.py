@@ -164,13 +164,13 @@ class LensCheckVisitor(BaseNodeVisitor):
             # name_check_visitor.env = get_module_environment(self.tree)
             self.name_check_visitor.env = get_module_environment(self.tree)
             self.name_check_visitor.check()
-            if self.name_check_visitor.all_failures:
-                self.all_failures = self.name_check_visitor.all_failures
-                return self.name_check_visitor.all_failures
-            self.env = get_module_environment(self.tree)
-            self.visit(self.tree)
-            attribute_checker.tree = self.tree
-            return self.all_failures
+        if self.name_check_visitor.all_failures:
+            self.all_failures = self.name_check_visitor.all_failures
+            return self.name_check_visitor.all_failures
+        self.env = get_module_environment(self.tree)
+        self.visit(self.tree)
+        attribute_checker.tree = self.tree
+        return self.all_failures
 
     def visit_ClassDef(self, node):
         from vpy.lib.utils import graph, get_class_environment, get_decorators, get_at
@@ -194,7 +194,7 @@ class LensCheckVisitor(BaseNodeVisitor):
                     continue
                 if attr not in [f.name for f in cls_env.fields[to]]:
                     m_to = next(
-                        (m for m in cls_env.methods[to] if m.interface.name == attr),
+                        (m for m in cls_env.methods[to] if m.name == attr),
                         None,
                     )
                     if m_to is None:
@@ -209,11 +209,7 @@ class LensCheckVisitor(BaseNodeVisitor):
                         )
                     else:
                         m_frm = next(
-                            (
-                                m
-                                for m in cls_env.methods[frm]
-                                if m.interface.name == attr
-                            ),
+                            (m for m in cls_env.methods[frm] if m.name == attr),
                             None,
                         )
                         if m_frm is None:
@@ -234,14 +230,10 @@ class LensCheckVisitor(BaseNodeVisitor):
                     if lens_node is None:
                         continue
                     m_v = next(
-                        m.interface
-                        for m in cls_env.methods[v]
-                        if m.interface.name == method
+                        m.interface for m in cls_env.methods[v] if m.name == method
                     )
                     m_t = next(
-                        m.interface
-                        for m in cls_env.methods[t]
-                        if m.interface.name == method
+                        m.interface for m in cls_env.methods[t] if m.name == method
                     )
                     if m_v is not None and m_t is not None:
                         # Check that signature of method and lens match
@@ -328,7 +320,9 @@ class LensCheckVisitor(BaseNodeVisitor):
         for v in g.all():
             methods = {m for m in cls_env.methods[v.name]}
             lenses_methods = {
-                VersionedMethod(interface=l.node, implementation=l.node)
+                VersionedMethod(
+                    name=l.node.name, interface=l.node, implementation=l.node
+                )
                 for w in cls_env.get_lenses.get(v.name, {}).values()
                 for l in w.values()
                 if l.node is not None
@@ -386,6 +380,9 @@ class LensCheckVisitor(BaseNodeVisitor):
                 )
 
     def __check_lens_method_signature(self, lens: FunctionDef, m: FunctionDef, v, t):
+        from vpy.lib.lookup import get_at
+
+        lens_at = get_at(lens)
         lens_sig = self.name_check_visitor.signature_from_value(
             self.name_check_visitor.visit(lens)
         )
@@ -397,6 +394,8 @@ class LensCheckVisitor(BaseNodeVisitor):
             del lens_sig.parameters["f"]
         if isinstance(
             lens_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
+        ) or isinstance(
+            m_sig.can_assign(lens_sig, self.name_check_visitor), CanAssignError
         ):
             self.show_error(
                 lens,

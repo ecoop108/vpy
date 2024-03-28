@@ -18,14 +18,16 @@ from vpy.typechecker.pyanalyze.value import AnySource, AnyValue, TypedValue
 
 class ClassFieldCollector(NodeVisitor):
     """
-    Collects the fields explicitly defined in a class at version v.
+    Collects the fields explicitly defined in a class at version v. The collection is a dict[f: Field => i:bool] where
+    `f` is the `Field` object and `i` is a boolean indicating whether this field is defined in `__init__` or not.
     """
 
     def __init__(self, cls_ast: ClassDef, cls_methods: list[str], v: VersionId):
         self.__cls_methods = cls_methods
         self.__cls_ast = cls_ast
         self.__v = v
-        self.fields: set[Field] = set()
+        self.__in_constructor = False
+        self.fields: dict[Field, bool] = dict()
 
     def visit_ClassDef(self, node: ClassDef):
         assert False
@@ -34,6 +36,7 @@ class ClassFieldCollector(NodeVisitor):
         # Only look in methods defined at version v.
         if get_at(node) != self.__v:
             return None
+        self.__in_constructor = node.name == "__init__"
         self.generic_visit(node)
 
     def visit_Assign(self, node):
@@ -42,7 +45,7 @@ class ClassFieldCollector(NodeVisitor):
                 target, obj_type=self.__cls_ast.name
             ):
                 if target.attr not in self.__cls_methods:
-                    self.fields.add(Field(name=target.attr, type=typeof_node(target)))
+                    self.__add_field(Field(name=target.attr, type=typeof_node(target)))
 
     def visit_AnnAssign(self, node):
         if isinstance(node.target, Attribute) and is_obj_attribute(
@@ -54,16 +57,22 @@ class ClassFieldCollector(NodeVisitor):
                     field_type = TypedValue(node.annotation.id)
                 elif isinstance(node.annotation, Constant):
                     field_type = TypedValue(node.annotation.value)
-                self.fields.add(Field(node.target.attr, type=field_type))
+                self.__add_field(Field(node.target.attr, type=field_type))
 
     def visit_AugAssign(self, node):
         if isinstance(node.target, Attribute) and is_obj_attribute(
             node.target, obj_type=self.__cls_ast.name
         ):
             if node.target.attr not in self.__cls_methods:
-                self.fields.add(
+                self.__add_field(
                     Field(name=node.target.attr, type=typeof_node(node.target))
                 )
+
+    def __add_field(self, field: Field):
+        if self.__in_constructor:
+            self.fields[field] = True
+        elif field not in self.fields:
+            self.fields[field] = False
 
 
 class FieldNodeCollector(NodeVisitor):

@@ -43,42 +43,38 @@ class MethodLensTransformer(ast.NodeTransformer):
         method_lens = self.env.method_lenses[self.cls_ast.name].find_lens(
             v_from=self.v_target, v_to=self.v_from, attr=node.name
         )
-
-        if method_lens is not None and method_lens.node is not None:
-            target_version = self.g.find_version(self.v_target)
-            if target_version is None:
-                assert False
-
-            mdef = _method_lookup(
-                Graph(graph=[target_version]),
-                self.env.cls_ast[self.cls_ast.name],
-                node.name,
-                self.v_target,
+        node_copy = node
+        mdef = next(
+            (
+                m
+                for m in self.env.methods[self.cls_ast.name][self.v_target]
+                if m.name == node.name
+            ),
+            None,
+        )
+        if mdef is None:
+            assert False
+        if method_lens is None or method_lens.node is None:
+            return node
+        if mdef.interface not in self.cls_ast.body:
+            mdef_copy = deepcopy(mdef.interface)
+            self_attr = create_obj_attr(
+                obj=Name(id="self", ctx=Load()),
+                attr=method_lens.node.name,
+                obj_type=typeof_node(self.cls_ast),
+                attr_type=typeof_node(method_lens.node),
             )
+            args = [ast.arg(arg=a.arg) for a in mdef_copy.args.args[1:]]
+            kw_args = [
+                keyword(arg=kw, value=Name(id=kw)) for kw in mdef_copy.args.kwonlyargs
+            ]
+            method_lens_call = Call(func=self_attr, args=args, keywords=kw_args)
+            mdef_copy.body = [Return(value=method_lens_call)]
+            self.cls_ast.body.append(mdef_copy)
 
+        while method_lens is not None and method_lens.node is not None:
             node_copy = deepcopy(node)
-            node_copy.name = f"__{self.v_from}__" + node.name
-            node = node_copy
-
-            if (
-                isinstance(mdef, VersionedMethod)
-                and mdef.implementation not in self.cls_ast.body
-            ):
-                mdef_copy = deepcopy(mdef.implementation)
-                self_attr = create_obj_attr(
-                    obj=Name(id="self", ctx=Load()),
-                    attr=method_lens.node.name,
-                    obj_type=typeof_node(self.cls_ast),
-                    attr_type=typeof_node(method_lens.node),
-                )
-                args = [ast.arg(arg=a.arg) for a in mdef_copy.args.args[1:]]
-                kw_args = [
-                    keyword(arg=kw, value=Name(id=kw))
-                    for kw in mdef_copy.args.kwonlyargs
-                ]
-                method_lens_call = Call(func=self_attr, args=args, keywords=kw_args)
-                mdef_copy.body = [Return(value=method_lens_call)]
-                self.cls_ast.body.append(mdef_copy)
+            node_copy.name = f"__{method_lens.v_target}__" + node.name
 
             if not hasattr(method_lens.node, "added"):
                 # Rewrite lens body to version v_target
@@ -93,14 +89,17 @@ class MethodLensTransformer(ast.NodeTransformer):
                     src=Name(id=method_arg.arg, ctx=Load()),
                     target=create_obj_attr(
                         obj=Name(id=obj_arg.arg, ctx=Load()),
-                        attr=node.name,
+                        attr=node_copy.name,
                         obj_type=typeof_node(self.cls_ast),
                     ),
                 )
                 lens_node = rw_visitor.visit(method_lens.node)
                 self.cls_ast.body.append(lens_node)
                 method_lens.node.added = True
-
+                method_lens = self.env.method_lenses[self.cls_ast.name].find_lens(
+                    v_from=method_lens.v_target, v_to=self.v_from, attr=node.name
+                )
+        node = node_copy
         for expr in node.body:
             self.visit(expr)
 
@@ -145,7 +144,7 @@ class MethodLensTransformer(ast.NodeTransformer):
                     method_v_from = next(
                         m.implementation
                         for m in self.env.methods[obj_type][self.v_from]
-                        if m.implementation.name == node.func.attr
+                        if m.name == node.func.attr
                     )
                     method_lens = self.env.method_lenses[obj_type].find_lens(
                         v_from=self.v_from,

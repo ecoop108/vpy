@@ -177,15 +177,13 @@ def _annotate_module(
 
     """
     kwargs = LensCheckVisitor.prepare_constructor_kwargs({})
-    options = NameCheckVisitor.prepare_constructor_kwargs({})["checker"].options
-    with ClassAttributeChecker(enabled=True, options=options) as attribute_checker:
-        version_visitor = LensCheckVisitor(
-            filename,
-            code_str,
-            tree,
-            settings={"print": show_errors}
-            | {error_code: show_errors for error_code in ErrorCode},
-            **kwargs,
-        )
-        version_visitor.check()
+    version_visitor = LensCheckVisitor(
+        filename,
+        code_str,
+        tree,
+        settings={"print": show_errors}
+        | {error_code: show_errors for error_code in ErrorCode},
+        **kwargs,
+    )
+    version_visitor.check()
     return version_visitor
