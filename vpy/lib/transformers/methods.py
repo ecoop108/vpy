@@ -1,10 +1,8 @@
 import ast
 from ast import Attribute, Call, ClassDef, FunctionDef, Load, Name, Return, keyword
 from copy import deepcopy
-from typing import Any
 
-from vpy.lib.lookup import _method_lookup
-from vpy.lib.lib_types import Environment, Graph, VersionId, VersionedMethod
+from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName
 from vpy.lib.utils import (
     annotation_from_type_value,

@@ -11,6 +11,12 @@ from vpy.lib.visitors.fields import ClassFieldCollector
 from vpy.lib.visitors.methods import MethodCollector
 
 
+class MethodConflictException(Exception):
+    def __init__(self, definitions, *, message=""):
+        self.definitions: set[FunctionDef] = definitions
+        super().__init__(message)
+
+
 def base_versions(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionId]:
     fields_v = fields_at(g=g, cls_ast=cls_ast, v=v)
     if len(fields_v) > 0:
@@ -74,9 +80,7 @@ def fields_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
         return base_fields
 
 
-def methods_lookup(
-    g: Graph, cls_ast: ClassDef, v: VersionId
-) -> set[VersionedMethod | tuple[FunctionDef, ...]]:
+def methods_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionedMethod]:
     """
     Returns the methods of a class available at version v. These may be
     explictly defined at v or inherited from some other related version(s).
@@ -84,16 +88,19 @@ def methods_lookup(
 
     class MethodCollector(NodeVisitor):
         def __init__(self):
-            self.methods: set[VersionedMethod | tuple[FunctionDef, ...]] = set()
+            self.methods: set[VersionedMethod] = set()
 
         def visit_ClassDef(self, node: ClassDef):
             self.generic_visit(node)
 
         def visit_FunctionDef(self, node: FunctionDef):
             if not is_lens(node):
-                mdef = _method_lookup(g, cls_ast, node.name, v)
-                if mdef is not None:
-                    self.methods.add(mdef)
+                try:
+                    mdef = _method_lookup(g, cls_ast, node.name, v)
+                    if mdef is not None:
+                        self.methods.add(mdef)
+                except MethodConflictException:
+                    return
 
     visitor = MethodCollector()
     visitor.visit(cls_ast)
@@ -256,43 +263,47 @@ def __method_lens_lookup(
 
 def __replacement_method_lookup(
     g: Graph, cls_ast: ClassDef, m: str, v: VersionId
-) -> tuple[FunctionDef, ...] | None:
+) -> FunctionDef | None:
     """
     Search for a replacement implementation of method `m` for version `v`.
     """
     if m == "__init__":
         return None
-    replacements = g.replacements(v)
     rm: set[FunctionDef] = set()
-    for me in set(
-        _method_lookup(g.delete(v), cls_ast, m, r.name) for r in replacements
-    ):
-        if me is not None:
-            if not isinstance(me, VersionedMethod):
-                rm.union(set(me))
-            else:
+    for r in g.replacements(v):
+        gr = g.delete(v)
+        try:
+            me = _method_lookup(gr, cls_ast, m, r.name)
+            if me is not None:
                 version_v = g.find_version(v)
                 if version_v is not None:
-                    if get_at(me.implementation) in [
-                        r for r in version_v.replaces
-                    ] and (lm := __local_method_lookup(cls_ast=cls_ast, m=m, v=v)):
-                        return lm
+                    try:
+                        if get_at(me.implementation) in [
+                            r for r in version_v.replaces
+                        ] and (lm := __local_method_lookup(cls_ast=cls_ast, m=m, v=v)):
+                            return lm
+                    except MethodConflictException:
+                        continue
                 rm.add(me.implementation)
+        except MethodConflictException as e:
+            rm = rm.union(e.definitions)
     if len(rm) == 0:
         return None
     if len(rm) == 1:
         mv = get_at(list(rm)[0])
         ge = g.delete(v).delete(mv)
-        me = _method_lookup(ge, cls_ast, m, v)
-        if me is not None and not isinstance(me, VersionedMethod):
-            return me
+        try:
+            me = _method_lookup(ge, cls_ast, m, v)
+            return rm.pop()
+        except MethodConflictException as e:
+            raise e
 
-    return tuple(rm)
+    raise MethodConflictException(definitions=rm)
 
 
 def __local_method_lookup(
     cls_ast: ClassDef, m: str, v: VersionId
-) -> tuple[FunctionDef, ...] | None:
+) -> FunctionDef | None:
     """
     Search for a local implementation of method `m` for version `v`.
     """
@@ -306,68 +317,58 @@ def __local_method_lookup(
     lm = tuple(
         set(me for me in [me for me in methods if me.name == m] if me is not None)
     )
-    # if len(lm) == 0 and m in dir(object):
-    #     return tuple()
-    return lm if len(lm) > 0 else None
+    if len(lm) == 0:
+        return None
+    if len(lm) == 1:
+        return lm[0]
+    raise MethodConflictException(definitions=lm)
 
 
 def __inherited_method_lookup(
     g: Graph, cls_ast: ClassDef, m: str, v: VersionId
-) -> tuple[FunctionDef, ...] | None:
+) -> FunctionDef | None:
     """
     Search for an inherited implementation of method `m` for version `v`.
     """
     graph = g.delete(v)
     um: set[FunctionDef] = set()
-    # for p in g.parents(v):
-    #     try:
-    #         me = _method_lookup(graph, cls_ast, m, p.name)
-    #         if me is not None:
-    #             um.add(me.implementation)
-    #     except MethodConflictException as e:
-    #         um.union(e.definitions)
-
-    for me in [_method_lookup(graph, cls_ast, m, r.name) for r in g.parents(v)]:
-        if me is not None:
-            if not isinstance(me, VersionedMethod):
-                um.union(set(me))
-            else:
+    for p in g.parents(v):
+        try:
+            me = _method_lookup(graph, cls_ast, m, p.name)
+            if me is not None:
                 um.add(me.implementation)
-    # if len(um) == 0:
-    #     return None
-    # if len(um) == 1:
-    #     return um
-    # raise MethodConflictException(definitions=um)
-    return tuple(um) if len(um) > 0 else None
-
-
-class MethodConflictException(Exception):
-    def __init__(self, definitions, *, message=""):
-        self.definitions: set[FunctionDef] = definitions
-        super().__init__(message)
+        except MethodConflictException as e:
+            um = um.union(e.definitions)
+    if len(um) == 0:
+        return None
+    if len(um) == 1:
+        return um.pop()
+    raise MethodConflictException(definitions=um)
 
 
 def _method_lookup(
     g: Graph, cls_ast: ClassDef, m: str, v: VersionId
-) -> VersionedMethod | tuple[FunctionDef, ...] | None:
+) -> VersionedMethod | None:
     if g.find_version(v) is None:
         return None
     interface = implementation = None
-    rm = __replacement_method_lookup(g, cls_ast, m, v)
-    if rm is not None:
-        if len(rm) == 1:
-            implementation = interface = rm[0]
-        else:
-            return rm
 
-    lm = __local_method_lookup(cls_ast, m, v)
-    if lm is not None:
-        if len(lm) == 1:
-            interface = lm[0]
+    try:
+        rm = __replacement_method_lookup(g, cls_ast, m, v)
+        if rm is not None:
+            implementation = interface = rm
+    except MethodConflictException as e:
+        raise e
+
+    try:
+        lm = __local_method_lookup(cls_ast, m, v)
+        if lm is not None:
+            interface = lm
             if implementation is None:
-                implementation = lm[0]
-        else:
-            return lm
+                implementation = lm
+    except MethodConflictException as e:
+        raise e
+
     if interface is not None and implementation is not None:
         return VersionedMethod(
             name=m, interface=interface, implementation=implementation
@@ -375,13 +376,10 @@ def _method_lookup(
 
     um = __inherited_method_lookup(g, cls_ast, m, v)
     if um is not None:
-        if len(um) == 1:
-            if interface is None:
-                interface = um[0]
-            if implementation is None:
-                implementation = um[0]
-        else:
-            return um
+        if interface is None:
+            interface = um
+        if implementation is None:
+            implementation = um
     if interface is not None and implementation is not None:
         return VersionedMethod(
             name=m, interface=interface, implementation=implementation

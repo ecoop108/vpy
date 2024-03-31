@@ -1769,19 +1769,19 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
     ) -> None:
         if isinstance(node, ast.FunctionDef):
             pass
-            from vpy.lib.lookup import _method_lookup, get_at
-            from vpy.lib.lib_types import VersionedMethod
+            from vpy.lib.lookup import _method_lookup, get_at, MethodConflictException
 
             cls_ast = self.node_context.nearest_enclosing(ast.ClassDef)
             g = self.env.versions[cls_ast.name]
             for p in g.parents(version) | g.replacements(version) | g.branches(version):
-                m = _method_lookup(
-                    self.env.versions[cls_ast.name], cls_ast, varname, p.name
-                )
-                if m is not None and not isinstance(m, VersionedMethod):
+                try:
+                    m = _method_lookup(
+                        self.env.versions[cls_ast.name], cls_ast, varname, p.name
+                    )
+                except MethodConflictException as e:
                     self.show_error(
-                        m[0],
-                        f"CONFLICT: definitions of method {m[0].name}: {p.name, [get_at(n) for n in m if get_at(n) != p.name]}",
+                        node,
+                        f"CONFLICT: definitions of method {node.name}: {p.name, [get_at(n) for n in e.definitions if get_at(n) != p.name]}",
                     )
         else:
             return

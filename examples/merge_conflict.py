@@ -39,8 +39,8 @@ class B:
 
     # To solve the conflict we either introduce a definition of `m` in version
     # 3, or add a new replacement version (4) with such a definition.
-    # @at("3")
-    # def m(self): ...
+    @at("3")
+    def m(self): ...
 
     # @at("4")
     # def m(self): ...
