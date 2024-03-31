@@ -1284,7 +1284,7 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
         # set versioned environment
         self.version = None
-        self.env = None
+        self.env: "Environment | None" = None
 
     def get_local_return_value(self, sig: MaybeSignature) -> Optional[Value]:
         val, saved_sig = self._argspec_to_retval.get(id(sig), (None, None))
@@ -1598,6 +1598,8 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                     self.version, varname, node, value
                 )
             self._check_for_class_variable_redefinition(self.version, varname, node)
+            self._check_for_class_method_conflict(self.version, varname, node)
+
         if value is None:
             return AnyValue(AnySource.inference), EMPTY_ORIGIN
         origin = current_scope.set(
@@ -1760,6 +1762,29 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             f"Name {varname}{' in version ' + version if version is not None else ''} is already defined",
             error_code=ErrorCode.class_variable_redefinition,
         )
+
+    # TODO: This should probably work fine for class variables as well
+    def _check_for_class_method_conflict(
+        self, version: VersionId | None, varname: str, node: ast.AST
+    ) -> None:
+        if isinstance(node, ast.FunctionDef):
+            pass
+            from vpy.lib.lookup import _method_lookup, get_at
+            from vpy.lib.lib_types import VersionedMethod
+
+            cls_ast = self.node_context.nearest_enclosing(ast.ClassDef)
+            g = self.env.versions[cls_ast.name]
+            for p in g.parents(version) | g.replacements(version) | g.branches(version):
+                m = _method_lookup(
+                    self.env.versions[cls_ast.name], cls_ast, varname, p.name
+                )
+                if m is not None and not isinstance(m, VersionedMethod):
+                    self.show_error(
+                        m[0],
+                        f"CONFLICT: definitions of method {m[0].name}: {p.name, [get_at(n) for n in m if get_at(n) != p.name]}",
+                    )
+        else:
+            return
 
     def resolve_name(
         self,

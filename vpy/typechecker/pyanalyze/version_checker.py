@@ -333,13 +333,6 @@ class LensCheckVisitor(BaseNodeVisitor):
                 if l.node is not None
             }
             for m in methods.union(lenses_methods):
-                if not isinstance(m, VersionedMethod):
-                    if any(get_at(n) != get_at(m[0]) for n in m):
-                        self.show_error(
-                            m[0],
-                            f"Conflicting definitions of method {m[0].name}: {v, [get_at(n) for n in m if get_at(n) != v]}",
-                        )
-                    return
                 if not is_lens(m.implementation):
                     self.__check_missing_method_lens(
                         implementation=m.implementation,

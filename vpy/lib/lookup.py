@@ -18,7 +18,7 @@ def base_versions(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionId]:
     else:
         base_p: set[VersionId] = set()
         for p in g.parents(v):
-            back = base_versions(g, cls_ast, p)
+            back = base_versions(g, cls_ast, p.name)
             base_p = base_p.union(back)
         return base_p
 
@@ -319,13 +319,32 @@ def __inherited_method_lookup(
     """
     graph = g.delete(v)
     um: set[FunctionDef] = set()
-    for me in [_method_lookup(graph, cls_ast, m, r) for r in g.parents(v)]:
+    # for p in g.parents(v):
+    #     try:
+    #         me = _method_lookup(graph, cls_ast, m, p.name)
+    #         if me is not None:
+    #             um.add(me.implementation)
+    #     except MethodConflictException as e:
+    #         um.union(e.definitions)
+
+    for me in [_method_lookup(graph, cls_ast, m, r.name) for r in g.parents(v)]:
         if me is not None:
             if not isinstance(me, VersionedMethod):
                 um.union(set(me))
             else:
                 um.add(me.implementation)
+    # if len(um) == 0:
+    #     return None
+    # if len(um) == 1:
+    #     return um
+    # raise MethodConflictException(definitions=um)
     return tuple(um) if len(um) > 0 else None
+
+
+class MethodConflictException(Exception):
+    def __init__(self, definitions, *, message=""):
+        self.definitions: set[FunctionDef] = definitions
+        super().__init__(message)
 
 
 def _method_lookup(
@@ -388,7 +407,7 @@ def fields_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
     visitor = ClassFieldCollector(cls_ast, [m.name for m in methods], v)
     for m in methods:
         visitor.visit(m)
-    parent_fields = {f for p in g.parents(v) for f in fields_at(g, cls_ast, p)}
+    parent_fields = {f for p in g.parents(v) for f in fields_at(g, cls_ast, p.name)}
     result = set()
     # Iterate over fields at v and check if they are inherited or introduced here.
     for field, explicit in visitor.fields.items():

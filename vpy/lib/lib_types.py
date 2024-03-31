@@ -66,10 +66,12 @@ class Graph(DiGraph):
     def all(self) -> list[Version]:
         return list(self.nodes)
 
-    def parents(self, v: VersionId) -> set[VersionId]:
+    def parents(self, v: VersionId) -> set[Version]:
         """Returns the ids of versions that v either upgrades or replaces."""
         if version := self.find_version(v):
-            return set(version.upgrades + version.replaces)
+            return {
+                self.find_version(p) for p in set(version.upgrades + version.replaces)
+            }
         return set()
 
     def delete(self, v: VersionId) -> "Graph":
@@ -83,14 +85,11 @@ class Graph(DiGraph):
             val.replaces = tuple(r for r in val.replaces if r != v)
         return other
 
-    def children(self, v: VersionId) -> list[Version]:
-        return [w for w in self.nodes if v in w.upgrades or v in w.replaces]
+    def replacements(self, v: VersionId) -> set[Version]:
+        return {w for w in self.nodes if v in w.replaces}
 
-    def replacements(self, v: VersionId) -> list[Version]:
-        return [w for w in self.nodes if v in w.replaces]
-
-    def upgrades(self, v: VersionId) -> list[Version]:
-        return [w for w in self.nodes if v in w.upgrades]
+    def branches(self, v: VersionId) -> set[Version]:
+        return {w for w in self.nodes if v in w.upgrades}
 
     def tree(self):
         tree = []
@@ -98,7 +97,7 @@ class Graph(DiGraph):
         def make_tree_node(g: Graph, root: Version):
             node = dict()
             commits = g.replacements(root.name)
-            branches = g.upgrades(root.name)
+            branches = g.branches(root.name)
             node[root.name] = {
                 "commits": [make_tree_node(g, r) for r in commits],
                 "branches": [make_tree_node(g, r) for r in branches],
@@ -149,7 +148,6 @@ class Lenses(UserDict[VersionId, dict[VersionId, dict[str, Lens]]]):
 
 
 class Field(NamedTuple):
-
     name: str
     type: "Value"
 
