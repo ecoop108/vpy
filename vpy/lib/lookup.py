@@ -282,8 +282,7 @@ def __replacement_method_lookup(
         return None
     if len(rm) == 1:
         mv = get_at(list(rm)[0])
-        ge = g.delete(v)
-        ge = g.delete(mv)
+        ge = g.delete(v).delete(mv)
         me = _method_lookup(ge, cls_ast, m, v)
         if me is not None and not isinstance(me, VersionedMethod):
             return me
@@ -350,6 +349,10 @@ def _method_lookup(
                 implementation = lm[0]
         else:
             return lm
+    if interface is not None and implementation is not None:
+        return VersionedMethod(
+            name=m, interface=interface, implementation=implementation
+        )
 
     um = __inherited_method_lookup(g, cls_ast, m, v)
     if um is not None:

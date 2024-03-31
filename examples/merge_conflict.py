@@ -1,46 +1,61 @@
-from vpy.decorators import at, get, run, version
+from vpy.decorators import at, version
 
 
-@version(name="init")
-@version(name="last", upgrades=["init"])
-@version(name="full", upgrades=["init"])
-# @version(name="merge", replaces=["init", "full", "last"])
+@version(name="1")
+@version(name="2", replaces=["1"])
+@version(name="3", replaces=["1"])
+@version(name="4", replaces=["2", "3"])
+class A:
+    # Versions 2 and 3 introduce separate definitions of method `m`. This
+    # creates a conflict in version 1 since both definitions are at the same
+    # level in the version graph.
+
+    @at("2")
+    def m(self) -> str: ...
+
+    @at("3")
+    def m(self) -> str: ...
+
+    # As such we must introduce a new version, 4,
+    # that merges versions 2 and 3, and introduces a merge definition of method
+    # `m`
+
+    # @at("4")
+    # def m(self) -> str: ...
+
+
+@version(name="1")
+@version(name="2")
+@version(name="3", upgrades=["1", "2"])
+@version(name="4", replaces=["3"])
+class B:
+    # Im this example, version 3 creates a new branch by merging versions 1 and
+    # 2. Since both have definitions of method `m`, this creates a conflict.
+    @at("1")
+    def m(self): ...
+
+    @at("2")
+    def m(self): ...
+
+    # To solve the conflict we either introduce a definition of `m` in version
+    # 3, or add a new replacement version (4) with such a definition.
+    # @at("3")
+    # def m(self): ...
+
+    # @at("4")
+    # def m(self): ...
+
+
+@version(name="1")
+@version(name="2", upgrades=["1"])
+@version(name="3", upgrades=["1"])
 class C:
-    """Version `init` introduces no methods. Then, branches `last` and `full` introduce separate definitions of method `m`.
-    Version `merge` joins versions `full` and `last` as a replacement for version `init`.
-    """
+    # Versions 2 and 3 introduce separate definitions of method `m`. Since these
+    # are branch versions, this does not create a conflict for clients in
+    # version 1."""
 
-    @at("full")
-    def b(self) -> str: ...
+    @at("3")
+    def m(self) -> str: ...
 
-    @at("last")
-    def b(self) -> str: ...
-
-    # @at("merge")
-    # def b(self) -> str:
-    #     """Version `merge` must introduce a definition of `m` to solve the conflict between the two branhces, otherwise the
-    #     program does not typecheck.
-    #     This definition is then available to clients in versions `init`, `full`, and `last`.
-    #     """
-    #     ...
-
-
-@version(name="init")
-@version(name="last", replaces=["init"])
-@version(name="full", replaces=["init"])
-@version(name="merge", replaces=["init", "full", "last"])
-class D:
-    """In this case, versions `last` and `full` replace version `init`. Each introduces a definition of method `m`.
-    This poses a conflict since definitions introduced in replacement versions should be available to previous clients.
-    As such, this program does not type check. We must remove either definition, or change the version graph
-    — introducing a merge definition does not resolve the conflict.
-    """
-
-    @at("full")
-    def b(self) -> str: ...
-
-    @at("last")
-    def b(self) -> str: ...
-
-    @at("merge")
-    def b(self) -> str: ...
+    @at("2")
+    def m(self) -> str: ...
