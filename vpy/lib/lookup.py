@@ -273,7 +273,7 @@ def __replacement_method_lookup(
     gr = g.delete(v)
     for r in g.replacements(v):
         try:
-            me = _method_lookup(gr, cls_ast, m, r.name)
+            me = _method_lookup(g, cls_ast, m, r.name)
             if me is not None:
                 #     version_v = g.find_version(v)
                 #     if version_v is not None:
@@ -356,7 +356,17 @@ def _method_lookup(
             interface = um
             implementation = um
     # Finally, look for an implementation in replacement versions.
-    rm = __replacement_method_lookup(g, cls_ast, m, v)
+    try:
+        rm = __replacement_method_lookup(g, cls_ast, m, v)
+    # If there is a conflict in replacement versions, we still return the
+    # local/parent definition, if we found one already. This is so that methods
+    # defined @at(v) are still well typed. The conflict exception should be
+    # handled at some other point, when checking the soundness of the entire
+    # version graph against the class definition.
+    except MethodConflictException as e:
+        if implementation is None or interface is None:
+            raise e
+        rm = None
     if rm is not None:
         implementation = rm
         # If no interface was found yet, this means that method `m` was
