@@ -213,7 +213,7 @@ def __method_lens_path_lookup(
     else:
         for w, lens in lenses[method].items():
             result = [{method: lens}]
-            methods_w = methods_at(g, cls_ast, w)
+            methods_w = methods_at(cls_ast, w)
             for m in methods_w:
                 path = __method_lens_path_lookup(g.delete(v), w, t, cls_ast, m.name)
                 if path is None:
@@ -251,7 +251,7 @@ def __method_lens_lookup(
     """
     Returns the method lenses from v to t.
     """
-    methods_v = methods_at(g, cls_ast, v)
+    methods_v = methods_at(cls_ast, v)
     result: dict[str, FunctionDef] = {}
     for method in methods_v:
         path = __method_lens_path_lookup(g, v, t, cls_ast, method.name)
@@ -270,20 +270,20 @@ def __replacement_method_lookup(
     if m == "__init__":
         return None
     rm: set[FunctionDef] = set()
+    gr = g.delete(v)
     for r in g.replacements(v):
-        gr = g.delete(v)
         try:
             me = _method_lookup(gr, cls_ast, m, r.name)
             if me is not None:
-                version_v = g.find_version(v)
-                if version_v is not None:
-                    try:
-                        if get_at(me.implementation) in [
-                            r for r in version_v.replaces
-                        ] and (lm := __local_method_lookup(cls_ast=cls_ast, m=m, v=v)):
-                            return lm
-                    except MethodConflictException:
-                        continue
+                #     version_v = g.find_version(v)
+                #     if version_v is not None:
+                #         try:
+                #             if get_at(me.implementation) in [
+                #                 r for r in version_v.replaces
+                #             ] and (lm := __local_method_lookup(cls_ast=cls_ast, m=m, v=v)):
+                #                 return lm
+                #         except MethodConflictException:
+                #             continue
                 rm.add(me.implementation)
         except MethodConflictException as e:
             rm = rm.union(e.definitions)
@@ -307,16 +307,8 @@ def __local_method_lookup(
     """
     Search for a local implementation of method `m` for version `v`.
     """
-    methods = tuple(
-        set(
-            m
-            for m in cls_ast.body
-            if isinstance(m, ast.FunctionDef) and not is_lens(m) and get_at(m) == v
-        )
-    )
-    lm = tuple(
-        set(me for me in [me for me in methods if me.name == m] if me is not None)
-    )
+    methods = methods_at(cls_ast, v)
+    lm = list(me for me in methods if me.name == m)
     if len(lm) == 0:
         return None
     if len(lm) == 1:
@@ -352,42 +344,35 @@ def _method_lookup(
     if g.find_version(v) is None:
         return None
     interface = implementation = None
-
-    try:
-        rm = __replacement_method_lookup(g, cls_ast, m, v)
-        if rm is not None:
-            implementation = interface = rm
-    except MethodConflictException as e:
-        raise e
-
-    try:
-        lm = __local_method_lookup(cls_ast, m, v)
-        if lm is not None:
-            interface = lm
-            if implementation is None:
-                implementation = lm
-    except MethodConflictException as e:
-        raise e
-
-    if interface is not None and implementation is not None:
-        return VersionedMethod(
-            name=m, interface=interface, implementation=implementation
-        )
-
-    um = __inherited_method_lookup(g, cls_ast, m, v)
-    if um is not None:
-        if interface is None:
+    # Start by looking for a local interface and implementation of `m`
+    lm = __local_method_lookup(cls_ast, m, v)
+    if lm is not None:
+        interface = lm
+        implementation = lm
+    # If none is found, look for interface and implementation in parent versions
+    else:
+        um = __inherited_method_lookup(g, cls_ast, m, v)
+        if um is not None:
             interface = um
-        if implementation is None:
             implementation = um
+    # Finally, look for an implementation in replacement versions.
+    rm = __replacement_method_lookup(g, cls_ast, m, v)
+    if rm is not None:
+        implementation = rm
+        # If no interface was found yet, this means that method `m` was
+        # introduced in a replacement version, so we set its interface to `rm`
+        if interface is None:
+            interface = rm
+
     if interface is not None and implementation is not None:
         return VersionedMethod(
             name=m, interface=interface, implementation=implementation
         )
-    return None
+    else:
+        return None
 
 
-def methods_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[FunctionDef]:
+def methods_at(cls_ast: ClassDef, v: VersionId) -> set[FunctionDef]:
     """
     Returns the methods of a class explicitly defined at version v.
     """
@@ -401,7 +386,7 @@ def fields_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
     """
     Returns the set of fields explicitly defined at version v.
     """
-    methods = methods_at(g, cls_ast, v)
+    methods = methods_at(cls_ast, v)
     visitor = ClassFieldCollector(cls_ast, [m.name for m in methods], v)
     for m in methods:
         visitor.visit(m)
