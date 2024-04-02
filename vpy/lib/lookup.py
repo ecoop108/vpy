@@ -111,7 +111,7 @@ def methods_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionedMe
 
 
 # TODO: Refactor this, v should be first arg to decorator (at)
-def __lenses_at(
+def __field_lenses_at(
     g: Graph, cls_ast: ClassDef, v: VersionId
 ) -> dict[str, dict[VersionId, FunctionDef]]:
     """
@@ -137,7 +137,7 @@ def __lenses_at(
     return lenses
 
 
-def __lenses_at_m(
+def __method_lenses_at(
     g: Graph, cls_ast: ClassDef, v: VersionId
 ) -> dict[str, dict[VersionId, FunctionDef]]:
     """
@@ -152,7 +152,7 @@ def __lenses_at_m(
                 at, target, field = [
                     a.value for a in decorator.args if isinstance(a, ast.Constant)
                 ]
-                if v == at:
+                if v == at and g.find_version(v) is not None:
                     if field not in lenses:
                         lenses[field] = {}
                     lenses[field][target] = method
@@ -166,7 +166,7 @@ def __field_lens_path_lookup(
     Returns a list of lenses to rewrite field from version v to version t
     """
     # TODO: Fix this after refactoring __lenses_at
-    lenses = __lenses_at(g=g, cls_ast=cls_ast, v=v)
+    lenses = __field_lenses_at(g=g, cls_ast=cls_ast, v=v)
     if field not in lenses:
         bases_v = base_versions(g, cls_ast, v)
         if bases_v != {v}:
@@ -205,7 +205,7 @@ def __method_lens_path_lookup(
     """
     Returns a list of lenses to rewrite method from version v to version t.
     """
-    lenses = __lenses_at_m(g=g, cls_ast=cls_ast, v=v)
+    lenses = __method_lenses_at(g=g, cls_ast=cls_ast, v=v)
     if method not in lenses:
         return None
     if t in lenses[method]:
