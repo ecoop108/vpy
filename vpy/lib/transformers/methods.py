@@ -1,5 +1,15 @@
 import ast
-from ast import Attribute, Call, ClassDef, FunctionDef, Load, Name, Return, keyword
+from ast import (
+    Attribute,
+    Call,
+    ClassDef,
+    FunctionDef,
+    Load,
+    Name,
+    NodeTransformer,
+    Return,
+    keyword,
+)
 from copy import deepcopy
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
@@ -14,10 +24,6 @@ from vpy.lib.utils import (
 
 
 class MethodLensTransformer(ast.NodeTransformer):
-    """
-    Rewrite method call of the form obj.m(*args, **kwargs) using method lenses from version v_from to version v_target.
-    """
-
     def __init__(
         self,
         g: Graph,
@@ -66,14 +72,13 @@ class MethodLensTransformer(ast.NodeTransformer):
             kw_args = [
                 keyword(arg=kw, value=Name(id=kw)) for kw in mdef_copy.args.kwonlyargs
             ]
-            method_lens_call = Call(func=self_attr, args=args, keywords=kw_args)
-            mdef_copy.body = [Return(value=method_lens_call)]
+            ret_expr = Call(func=self_attr, args=args, keywords=kw_args)
+            mdef_copy.body = [Return(value=ret_expr)]
             self.cls_ast.body.append(mdef_copy)
 
+        node_copy = deepcopy(node)
+        node_copy.name = f"__{self.v_from}__" + node.name
         while method_lens is not None and method_lens.node is not None:
-            node_copy = deepcopy(node)
-            node_copy.name = f"__{method_lens.v_target}__" + node.name
-
             if not hasattr(method_lens.node, "added"):
                 # Rewrite lens body to version v_target
                 method_visitor = MethodTransformer(
@@ -83,20 +88,26 @@ class MethodLensTransformer(ast.NodeTransformer):
                 # Replace second param in body with call to method in version v_from
                 obj_arg = method_lens.node.args.args[0]
                 method_arg = method_lens.node.args.args.pop(1)
+                next_lens = self.env.method_lenses[self.cls_ast.name].find_lens(
+                    v_from=method_lens.v_target, v_to=self.v_from, attr=node.name
+                )
+                rw_attr = (
+                    node_copy.name
+                    if next_lens is None or next_lens.node is None
+                    else next_lens.node.name
+                )
                 rw_visitor = RewriteName(
                     src=Name(id=method_arg.arg, ctx=Load()),
                     target=create_obj_attr(
                         obj=Name(id=obj_arg.arg, ctx=Load()),
-                        attr=node_copy.name,
+                        attr=rw_attr,
                         obj_type=typeof_node(self.cls_ast),
                     ),
                 )
                 lens_node = rw_visitor.visit(method_lens.node)
                 self.cls_ast.body.append(lens_node)
                 method_lens.node.added = True
-                method_lens = self.env.method_lenses[self.cls_ast.name].find_lens(
-                    v_from=method_lens.v_target, v_to=self.v_from, attr=node.name
-                )
+                method_lens = next_lens
         node = node_copy
         for expr in node.body:
             self.visit(expr)
