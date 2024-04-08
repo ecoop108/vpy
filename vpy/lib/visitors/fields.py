@@ -112,7 +112,7 @@ class FieldReferenceCollector(NodeVisitor):
         self.references: set[Field] = set()
         self.ctx = ctx
 
-    def visit_Attribute(self, node):
+    def visit_Attribute(self, node: Attribute):
         if is_field(node, self.fields):
             if type(node.ctx) in self.ctx:
                 self.references.add(

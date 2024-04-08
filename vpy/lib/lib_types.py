@@ -2,7 +2,7 @@
 This module provides useful types used throughout the codebase.
 """
 
-from ast import Attribute, ClassDef, Constant, FunctionDef, List, keyword, expr
+from ast import Attribute, Constant, FunctionDef, List, keyword, expr
 from collections import UserDict
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -18,8 +18,8 @@ VersionId = NewType("VersionId", str)
 
 class Version:
     def __init__(self, kws: list[keyword]):
-        replaces = set()
-        upgrades = set()
+        replaces: set[VersionId] = set()
+        upgrades: set[VersionId] = set()
         for k in kws:
             if k.arg == "name" and isinstance(k.value, Constant):
                 self.name = VersionId(k.value.value)
@@ -48,17 +48,17 @@ class Graph(DiGraph):
                 try:
                     uv = next(v for v in graph if v.name == upgrade)
                     self.add_edge(version, uv, label="upgrades")
-                except:
+                except StopIteration:
                     pass
             for replace in graph:
                 try:
                     rv = next(v for v in graph if v.name == replace)
                     self.add_edge(version, rv, label="replaces")
-                except:
+                except StopIteration:
                     pass
 
     def find_version(self, v: VersionId) -> Version | None:
-        for version in self.nodes:
+        for version in self.all():
             if version.name == v:
                 return version
         return None
@@ -80,16 +80,16 @@ class Graph(DiGraph):
         if version is None:
             return other
         other.remove_node(version)
-        for val in other.nodes:
+        for val in other.all():
             val.upgrades = tuple(u for u in val.upgrades if u != v)
             val.replaces = tuple(r for r in val.replaces if r != v)
         return other
 
     def replacements(self, v: VersionId) -> set[Version]:
-        return {w for w in self.nodes if v in w.replaces}
+        return {w for w in self.all() if v in w.replaces}
 
     def branches(self, v: VersionId) -> set[Version]:
-        return {w for w in self.nodes if v in w.upgrades}
+        return {w for w in self.all() if v in w.upgrades}
 
     def tree(self):
         tree = []
@@ -151,7 +151,7 @@ class Field(NamedTuple):
     name: str
     type: "Value"
 
-    def __eq__(self, __value: object) -> TYPE_CHECKING:
+    def __eq__(self, __value: object) -> bool:
         if isinstance(__value, Field):
             return (
                 self.name == __value.name

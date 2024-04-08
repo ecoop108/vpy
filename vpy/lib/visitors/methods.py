@@ -14,7 +14,7 @@ class MethodCollector(NodeVisitor):
     """
 
     def __init__(self, v: VersionId):
-        self.methods = set()
+        self.methods: set[FunctionDef] = set()
         self.v = v
 
     def visit_ClassDef(self, node: ClassDef):

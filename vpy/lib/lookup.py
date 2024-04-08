@@ -12,7 +12,7 @@ from vpy.lib.visitors.methods import MethodCollector
 
 
 class MethodConflictException(Exception):
-    def __init__(self, definitions, *, message=""):
+    def __init__(self, definitions: set[FunctionDef], *, message: str = ""):
         self.definitions: set[FunctionDef] = definitions
         super().__init__(message)
 
@@ -170,7 +170,7 @@ def __field_lens_path_lookup(
     if field not in lenses:
         bases_v = base_versions(g, cls_ast, v)
         if bases_v != {v}:
-            result = []
+            result: list[FunctionDef] = []
             for w in bases_v:
                 path = __field_lens_path_lookup(g, w, t, cls_ast, field)
                 if path is not None:
@@ -200,7 +200,7 @@ def __field_lens_path_lookup(
 
 def __method_lens_path_lookup(
     g: Graph, v: VersionId, t: VersionId, cls_ast: ClassDef, method: str
-) -> list[dict[str, FunctionDef]] | None:
+) -> list[FunctionDef] | None:
     # TODO: Do we need the method name in the result?
     """
     Returns a list of lenses to rewrite method from version v to version t.
@@ -209,10 +209,10 @@ def __method_lens_path_lookup(
     if method not in lenses:
         return None
     if t in lenses[method]:
-        return [{method: lenses[method][t]}]
+        return [lenses[method][t]]
     else:
         for w, lens in lenses[method].items():
-            result = [{method: lens}]
+            result = [lens]
             methods_w = methods_at(cls_ast, w)
             for m in methods_w:
                 path = __method_lens_path_lookup(g.delete(v), w, t, cls_ast, m.name)
@@ -256,7 +256,7 @@ def __method_lens_lookup(
     for method in methods_v:
         path = __method_lens_path_lookup(g, v, t, cls_ast, method.name)
         if path is not None:
-            lens = path[0][method.name]
+            lens = path[0]
             result[method.name] = lens
     return result
 
@@ -313,7 +313,7 @@ def __local_method_lookup(
         return None
     if len(lm) == 1:
         return lm[0]
-    raise MethodConflictException(definitions=lm)
+    raise MethodConflictException(definitions=set(lm))
 
 
 def __inherited_method_lookup(
@@ -401,7 +401,7 @@ def fields_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
     for m in methods:
         visitor.visit(m)
     parent_fields = {f for p in g.parents(v) for f in fields_at(g, cls_ast, p.name)}
-    result = set()
+    result: set[Field] = set()
     # Iterate over fields at v and check if they are inherited or introduced here.
     for field, explicit in visitor.fields.items():
         if explicit:

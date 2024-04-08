@@ -1,14 +1,16 @@
 import ast
 from types import ModuleType
-from typing import Type
+from typing import Type, TypeVar
 
 
 from vpy.lib.lib_types import VersionId
 from vpy.lib.transformers.module import ModuleTransformer
 from vpy.lib.utils import parse_module
 
+T = TypeVar("T")
 
-def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
+
+def eval_slice(module: ModuleType, cls: Type[T], v: VersionId) -> Type[T]:
     mod_ast, _ = parse_module(module)
     sl_mod = ModuleTransformer(v).visit(mod_ast)
 
@@ -19,6 +21,6 @@ def eval_slice(module: ModuleType, cls: Type, v: VersionId) -> Type:
     ][0]
 
     s = ast.unparse(ast.fix_missing_locations(sl_cls))
-    out = [type]
+    out: list[Type[T]] = [cls]
     exec(s + f"\nout[0]={cls.__name__}_{v}")
     return out[0]

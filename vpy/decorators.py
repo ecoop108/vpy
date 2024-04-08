@@ -1,47 +1,46 @@
 import functools
+from typing import Any, Callable, Type, TypeVar
 import vpy.lib.runtime as r
 
 
-def get(frm, to, field):
-
-    def decorator_version(cl):
-
-        @functools.wraps(cl)
+def get(frm: str, to: str, field: str):
+    def decorator_version(fn):
+        @functools.wraps(fn)
         def wrapper_version(*args, **kwargs):
-            return cl(*args, **kwargs)
+            return fn(*args, **kwargs)
 
         return wrapper_version
 
     return decorator_version
 
 
-def put(frm, to, field):
-
-    def decorator_version(cl):
-
-        @functools.wraps(cl)
+def put(frm: str, to: str, field: str):
+    def decorator_put(fn):
+        @functools.wraps(fn)
         def wrapper_version(*args, **kwargs):
-            return cl(*args, **kwargs)
+            return fn(*args, **kwargs)
 
         return wrapper_version
 
-    return decorator_version
+    return decorator_put
 
 
-def version(name: str, replaces=[], upgrades=[]):
+T = TypeVar("T")
 
-    def decorator_version(cl):
+
+def version(
+    name: str, replaces: list[str] = [], upgrades: list[str] = []
+) -> Callable[[Type[T]], Type[T]]:
+    def decorator_version(cl: Type[T]) -> Type[T]:
         return cl
 
     return decorator_version
 
 
-def run(v):
-
-    def decorator_run(f):
-
+def run(v: str) -> Callable[..., T]:
+    def decorator_run(f: Callable[..., T]):
         @functools.wraps(f)
-        def wrapper_run(*args, **kwargs):
+        def wrapper_run(*args: tuple[Any, ...], **kwargs: dict[str, Any]):
             return r.run(f, v, *args, **kwargs)
 
         return wrapper_run
@@ -50,7 +49,6 @@ def run(v):
 
 
 def at(name):
-
     def overload(func):
         """
         May be used as a shortcut for ``overloaded`` and ``overloads(f)``
@@ -74,7 +72,6 @@ def overloaded(func, version):
     fn = unwrap(func)
 
     def dispatcher(*args, **kwargs):
-
         resolved = None
         resolved = dispatcher.__functions[version]
         if resolved:

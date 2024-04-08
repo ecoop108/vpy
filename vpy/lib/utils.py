@@ -277,6 +277,8 @@ def field_to_arg(field: Field) -> ast.arg:
 
 
 def annotation_from_type_value(val: Value) -> str:
+    if isinstance(val, KnownValue) and isinstance(val.val, type):
+        return val.val.__name__
     val = val.simplify()
     if isinstance(val, TypedValue):
         if isinstance(val.typ, str):
