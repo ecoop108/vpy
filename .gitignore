@@ -258,3 +258,4 @@ flycheck_*.el
 .vscode/launch.json
 notes.md
 .dockerignore
+examples/.vscode/settings.json
