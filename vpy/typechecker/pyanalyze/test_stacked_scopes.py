@@ -1553,19 +1553,23 @@ class TestConstraints(TestNameCheckVisitorBase):
                 else:
                     assert_is_value(
                         self.value,
-                        MultiValuedValue([
-                            AnyValue(AnySource.unannotated),
-                            TypedValue(Foo),
-                            KnownValue(""),
-                        ]),
+                        MultiValuedValue(
+                            [
+                                AnyValue(AnySource.unannotated),
+                                TypedValue(Foo),
+                                KnownValue(""),
+                            ]
+                        ),
                     )
                 assert_is_value(
                     self.value,
-                    MultiValuedValue([
-                        TypedValue(Foo),
-                        AnyValue(AnySource.unannotated),
-                        KnownValue(""),
-                    ]),
+                    MultiValuedValue(
+                        [
+                            TypedValue(Foo),
+                            AnyValue(AnySource.unannotated),
+                            KnownValue(""),
+                        ]
+                    ),
                 )
 
     @assert_passes()

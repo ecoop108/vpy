@@ -34,8 +34,12 @@ class ClassFieldCollector(NodeVisitor):
 
     def visit_FunctionDef(self, node: FunctionDef):
         # Only look in methods defined at version v.
-        if get_at(node) != self.__v:
-            return None
+        try:
+            if get_at(node) != self.__v:
+                return None
+        # Case where we are in a nested function
+        except AssertionError:
+            pass
         self.__in_constructor = node.name == "__init__"
         self.generic_visit(node)
 

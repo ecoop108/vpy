@@ -170,8 +170,9 @@ class LensCheckVisitor(BaseNodeVisitor):
             self.name_check_visitor.env = get_module_environment(self.tree)
             self.name_check_visitor.check()
         if self.name_check_visitor.all_failures:
-            self.all_failures = self.name_check_visitor.all_failures
-            return self.name_check_visitor.all_failures
+            pass
+            # self.all_failures = self.name_check_visitor.all_failures
+            # return self.name_check_visitor.all_failures
         self.env = get_module_environment(self.tree)
         self.visit(self.tree)
         attribute_checker.tree = self.tree

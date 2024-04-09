@@ -977,7 +977,11 @@ class ClassAttributeChecker:
         # it was set on an instance of the class
 
         # iterate over all base versions of `version` and lookup the attribute
-        if env is not None:
+        if (
+            env is not None
+            and typ.__name__ in env.bases
+            and version in env.bases[typ.__name__]
+        ):
             for v in env.bases[typ.__name__][version]:
                 if attr_name in self.attributes_set[serialized][v]:
                     return
@@ -2104,7 +2108,10 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         # the context of the version it is defined at.
         from vpy.lib.lookup import get_at
 
-        self.version = get_at(node)
+        try:
+            self.version = get_at(node)
+        except AssertionError:
+            pass
         potential_function = None  # self._get_potential_function(node)
         with self.compute_function_info(
             node,
@@ -2334,7 +2341,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                     with (
                         self.catch_errors(),
                         self.scopes.add_scope(
-                            ScopeType.function_scope, scope_node=node
+                            ScopeType.function_scope,
+                            scope_node=node,
+                            version=self.version,
                         ),
                     ):
                         self._generic_visit_list(node.body)
@@ -2346,7 +2355,9 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
         # of the place where the function is defined, not those of where the function
         # is called, which is strictly speaking wrong but should be fine in practice.
         with (
-            self.scopes.add_scope(ScopeType.function_scope, scope_node=node),
+            self.scopes.add_scope(
+                ScopeType.function_scope, scope_node=node, version=self.version
+            ),
             qcore.override(self, "is_generator", False),
             qcore.override(self, "async_kind", function_info.async_kind),
             qcore.override(self, "_name_node_to_statement", {}),
@@ -3040,13 +3051,17 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
             # be evaluated at a different place in the function than where they are defined,
             # but that is unlikely to be an issue in practice.
             with (
-                self.scopes.add_scope(ScopeType.function_scope, scope_node=node),
+                self.scopes.add_scope(
+                    ScopeType.function_scope, scope_node=node, version=self.version
+                ),
                 qcore.override(self, "_name_node_to_statement", {}),
             ):
                 return self._visit_comprehension_inner(node, typ, iterable_type)
 
         with (
-            self.scopes.add_scope(ScopeType.function_scope, scope_node=node),
+            self.scopes.add_scope(
+                ScopeType.function_scope, scope_node=node, version=self.version
+            ),
             qcore.override(self, "_name_node_to_statement", {}),
         ):
             scope = self.scopes.current_scope()

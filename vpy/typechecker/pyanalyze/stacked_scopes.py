@@ -1160,7 +1160,7 @@ class FunctionScope(Scope):
             return EMPTY_ORIGIN
         ref_var = self.referencing_value_vars[varname]
         if isinstance(ref_var, ReferencingValue):
-            ref_var.scope.set(ref_var.name, value, node, state)
+            ref_var.scope.set(version, ref_var.name, value, node, state)
             # Mark anything set through a ReferencingValue as special access; this disables unused
             # variable errors. We can't reliably find out that a nonlocal variable is unused.
             if isinstance(ref_var.scope, FunctionScope):

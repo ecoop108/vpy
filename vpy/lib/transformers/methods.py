@@ -10,7 +10,7 @@ from ast import (
     Return,
     keyword,
 )
-from copy import deepcopy
+from copy import copy, deepcopy
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.transformers.rewrite import RewriteName
@@ -61,7 +61,7 @@ class MethodLensTransformer(ast.NodeTransformer):
         if method_lens is None or method_lens.node is None:
             return node
         if mdef.interface not in self.cls_ast.body:
-            mdef_copy = deepcopy(mdef.interface)
+            mdef_copy = copy(mdef.interface)
             self_attr = create_obj_attr(
                 obj=Name(id="self", ctx=Load()),
                 attr=method_lens.node.name,
@@ -76,7 +76,7 @@ class MethodLensTransformer(ast.NodeTransformer):
             mdef_copy.body = [Return(value=ret_expr)]
             self.cls_ast.body.append(mdef_copy)
 
-        node_copy = deepcopy(node)
+        node_copy = copy(node)
         node_copy.name = f"__{self.v_from}__" + node.name
         while method_lens is not None and method_lens.node is not None:
             if not hasattr(method_lens.node, "added"):

@@ -28,6 +28,7 @@ from ast import (
     While,
     With,
     expr,
+    stmt,
     walk,
 )
 from typing import Any
@@ -66,7 +67,7 @@ class RewriteName(ast.NodeTransformer):
 class ExtractLocalVar(ast.NodeTransformer):
     def __init__(
         self,
-        g,
+        g: Graph,
         cls_ast: ClassDef,
         env: Environment,
         aliases: dict[expr, Attribute],
@@ -176,7 +177,34 @@ class ExtractLocalVar(ast.NodeTransformer):
         return expr_before + [node] + expr_after
 
     def visit_While(self, node: While) -> Any:
-        assert False
+        field_visitor = FieldReplacementVisitor(self)
+        field_visitor.visit(node.test)
+        cond_replacements = field_visitor.fields
+        expr_before: list[stmt] = []
+        assign_visitor = AssignAfterCall(
+            self.g, self.cls_ast, self.env, self.aliases, self.v_from, cond_replacements
+        )
+        assign_visitor.visit(node.test)
+        for idx, (attr, var) in enumerate(cond_replacements.items()):
+            if all(
+                v != var for i, v in enumerate(cond_replacements.values()) if i < idx
+            ):
+                var_assign = Assign(targets=[var], value=attr)
+                expr_before.append(var_assign)
+            visitor = RewriteName(attr, var)
+            node.test = visitor.visit(node.test)
+        if assign_visitor.assignments:
+            var = Name(fresh_var(), ctx=Store())
+            expr_before.append(Assign(targets=[var], value=node.test))
+            node.test = var
+        for idx, assign in enumerate(assign_visitor.assignments):
+            if all(
+                v != assign for i, v in enumerate(assign_visitor.assignments) if i < idx
+            ):
+                expr_before.append(assign)
+        node = replace_in_body(node, "body", self)
+        node = replace_in_body(node, "orelse", self)
+        return expr_before + [node]
 
     def visit_Try(self, node: Try) -> Any:
         assert False
@@ -451,18 +479,24 @@ class FieldReplacementVisitor(NodeVisitor):
             fields = self.visitor.env.fields.get(obj_type, {}).get(
                 self.visitor.v_from, {}
             )
-            lens = self.visitor.env.get_lenses.get(obj_type).find_lens(
-                v_from=self.visitor.v_target, v_to=self.visitor.v_from, attr=node.attr
-            )
-            # If this is a field (e.g. not a method call) and there is a lens (other than the identity), we need to
-            # extract the field to a local variable
-            if is_field(node, fields) and lens is not None and lens.node is not None:
-
-                if node in self.visitor.aliases:
-                    if self.visitor.aliases[node] in self.fields:
-                        self.fields[node] = self.fields[self.visitor.aliases[node]]
+            if obj_type in self.visitor.env.get_lenses:
+                lens = self.visitor.env.get_lenses[obj_type].find_lens(
+                    v_from=self.visitor.v_target,
+                    v_to=self.visitor.v_from,
+                    attr=node.attr,
+                )
+                # If this is a field (e.g. not a method call) and there is a lens (other than the identity), we need to
+                # extract the field to a local variable
+                if (
+                    is_field(node, fields)
+                    and lens is not None
+                    and lens.node is not None
+                ):
+                    if node in self.visitor.aliases:
+                        if self.visitor.aliases[node] in self.fields:
+                            self.fields[node] = self.fields[self.visitor.aliases[node]]
+                        else:
+                            self.fields[node] = Name(id=fresh_var(), ctx=Load())
                     else:
                         self.fields[node] = Name(id=fresh_var(), ctx=Load())
-                else:
-                    self.fields[node] = Name(id=fresh_var(), ctx=Load())
         self.generic_visit(node)
