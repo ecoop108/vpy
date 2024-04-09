@@ -1601,8 +1601,10 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
                 self._check_for_incompatible_overrides(
                     self.version, varname, node, value
                 )
-            self._check_for_class_variable_redefinition(self.version, varname, node)
-            self._check_for_class_method_conflict(self.version, varname, node)
+            if not self._check_for_class_variable_redefinition(
+                self.version, varname, node
+            ):
+                self._check_for_class_method_conflict(self.version, varname, node)
 
         if value is None:
             return AnyValue(AnySource.inference), EMPTY_ORIGIN
@@ -1743,50 +1745,48 @@ class NameCheckVisitor(node_visitor.ReplacingNodeVisitor):
 
     def _check_for_class_variable_redefinition(
         self, version: VersionId | None, varname: str, node: ast.AST
-    ) -> None:
+    ) -> bool:
         scope = self.scopes.current_scope()
         if version not in scope.variables:
-            return
+            return False
         if varname not in scope.variables[version]:
-            return
+            return False
 
         # exclude cases where we do @<property>.setter
         # use __dict__ rather than getattr because properties override __get__
         if self.current_class is not None and isinstance(
             self.current_class.__dict__.get(varname), property
         ):
-            return
+            return False
 
         # allow augmenting an attribute
         if isinstance(self.current_statement, ast.AugAssign):
-            return
+            return False
 
         self.show_error(
             node,
             f"Name {varname}{' in version ' + version if version is not None else ''} is already defined",
             error_code=ErrorCode.class_variable_redefinition,
         )
+        return True
 
     # TODO: This should probably work fine for class variables as well
     def _check_for_class_method_conflict(
         self, version: VersionId | None, varname: str, node: ast.AST
     ) -> None:
         if isinstance(node, ast.FunctionDef):
-            pass
             from vpy.lib.lookup import _method_lookup, get_at, MethodConflictException
 
-            cls_ast = self.node_context.nearest_enclosing(ast.ClassDef)
-            g = self.env.versions[cls_ast.name]
-            for p in g.parents(version) | g.replacements(version) | g.branches(version):
-                try:
-                    m = _method_lookup(
-                        self.env.versions[cls_ast.name], cls_ast, varname, p.name
-                    )
-                except MethodConflictException as e:
-                    self.show_error(
-                        node,
-                        f"CONFLICT: definitions of method {node.name}: {p.name, [get_at(n) for n in e.definitions if get_at(n) != p.name]}",
-                    )
+            cls_ast: ast.ClassDef = self.node_context.nearest_enclosing(ast.ClassDef)
+            try:
+                m = _method_lookup(
+                    self.env.versions[cls_ast.name], cls_ast, varname, version
+                )
+            except MethodConflictException as e:
+                self.show_error(
+                    node,
+                    f"CONFLICT: definitions of method {node.name}: {version, [get_at(n) for n in e.definitions if get_at(n) != version]}",
+                )
         else:
             return
 
