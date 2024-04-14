@@ -26,22 +26,23 @@ def graph_versions(file) -> dict[str, list]:
     return versions
 
 
-def list_versions(file) -> dict[str, set[VersionId]]:
+def list_versions(file: str) -> set[VersionId]:
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     if spec is None or spec.loader is None:
         exit("Error reading module.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module_ast = ast.parse(inspect.getsource(module))
-    versions: dict[str, set[VersionId]] = {}
+    # versions: dict[str, set[VersionId]] = {}
+    versions: set[VersionId] = set()
     for node in module_ast.body:
         if isinstance(node, ast.ClassDef):
-            versions[node.name] = {v.name for v in graph(node)}
+            versions = versions.union({v.name for v in graph(node).all()})
     return versions
 
 
-def target(file, version: VersionId, strict=False):
-    if version not in {v for s in list_versions(file).values() for v in s}:
+def target(file: str, version: VersionId, strict: bool = False):
+    if version not in list_versions(file):
         exit(f"Invalid target {version}")
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
@@ -59,7 +60,7 @@ def target(file, version: VersionId, strict=False):
     print("\n".join(slices))
 
 
-def check(file):
+def check(file: str):
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
         exit(f"Error reading module from file {file}")
@@ -99,7 +100,7 @@ def argparser() -> argparse.ArgumentParser:
 
 
 def new_version(
-    file,
+    file: str,
     replaces: list[VersionId] | None,
     upgrades: list[VersionId] | None,
     name: str,
@@ -109,16 +110,16 @@ def new_version(
     if upgrades is None:
         upgrades = []
     if any(v not in list_versions(file) for v in replaces + upgrades):
-        exit(f"Invalid target.")
+        exit("Invalid version specification.")
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
         exit("Error reading module.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     mod_ast, _ = parse_module(module)
-    mod_ast = AddVersionTransformer(name, replaces=replaces, upgrades=upgrades).visit(
-        mod_ast
-    )
+    mod_ast = AddVersionTransformer(
+        VersionId(name), replaces=replaces, upgrades=upgrades
+    ).visit(mod_ast)
     print(ast.unparse(ast.fix_missing_locations(mod_ast)))
 
 
