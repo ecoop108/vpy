@@ -1,12 +1,10 @@
 import functools
-from typing import Any, Callable, LiteralString, ParamSpec, Type, TypeVar
+from typing import Any, Callable, LiteralString, Type
+from vpy.lib.lib_types import VersionId
 import vpy.lib.runtime as r
 
-T = TypeVar("T")
-P = ParamSpec("P")
 
-
-def get(frm: str, to: str, field: str):
+def get[T, **P](frm: str, to: str, field: str):
     def decorator_version(fn: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(fn)
         def wrapper_version(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -17,7 +15,7 @@ def get(frm: str, to: str, field: str):
     return decorator_version
 
 
-def put(frm: str, to: str, field: str):
+def put[T, **P](frm: str, to: str, field: str):
     def decorator_put(fn: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(fn)
         def wrapper_version(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -28,8 +26,8 @@ def put(frm: str, to: str, field: str):
     return decorator_put
 
 
-def version(
-    name: str, replaces: list[str] = [], upgrades: list[str] = []
+def version[T](
+    name: str, *, replaces: list[str] = [], upgrades: list[str] = []
 ) -> Callable[[Type[T]], Type[T]]:
     def decorator_version(cl: Type[T]) -> Type[T]:
         return cl
@@ -37,18 +35,18 @@ def version(
     return decorator_version
 
 
-def run(v: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def run[T, **P](v: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
     def decorator_run(f: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(f)
         def wrapper_run(*args: P.args, **kwargs: P.kwargs) -> T:
-            return r.run(f, v, *args, **kwargs)
+            return r.run(f, VersionId(v), *args, **kwargs)
 
         return wrapper_run
 
     return decorator_run
 
 
-def at(name: LiteralString) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def at[T, **P](name: LiteralString) -> Callable[[Callable[P, T]], Callable[P, T]]:
     def overload(func: Callable[P, T]) -> Callable[P, T]:
         """
         May be used as a shortcut for ``overloaded`` and ``overloads(f)``
@@ -60,12 +58,12 @@ def at(name: LiteralString) -> Callable[[Callable[P, T]], Callable[P, T]]:
             return register(__registry[fname], func, version=name)
         except KeyError:
             __registry[fname] = overloaded(func, version=name)
-            return __registry[fname]
+            return __registry[fname]  # type:ignore
 
     return overload
 
 
-def overloaded(func: Callable[P, T], version: str) -> Callable[P, T]:
+def overloaded[T, **P](func: Callable[P, T], version: str) -> Callable[P, T]:
     """
     Introduces a new overloaded function and registers its first implementation.
     """
@@ -90,7 +88,7 @@ def overloaded(func: Callable[P, T], version: str) -> Callable[P, T]:
 __registry: dict[str, Callable[..., Any]] = dict()
 
 
-def register(
+def register[T, **P](
     dispatcher: Callable[P, T | None], func: Callable[P, T], version: str
 ) -> Callable[P, T]:
     """
@@ -98,30 +96,30 @@ def register(
     """
     wrapper = None
     if isinstance(func, (classmethod, staticmethod)):
-        wrapper = type(func)
-        func = func.__func__
+        wrapper = type(func)  # type: ignore
+        func = func.__func__  # type: ignore
     if isinstance(dispatcher, (classmethod, staticmethod)):
         wrapper = None
-    dp = unwrap(dispatcher)
+    dp = unwrap(dispatcher)  # type:ignore
     # All clear; register the function.
-    dp.__functions[version] = func
+    dp.__functions[version] = func  # type:ignore
     if wrapper is None:
-        wrapper = lambda x: x
+        wrapper = lambda x: x  # type:ignore
     if func.__name__ == dp.__name__:
         # The returned function is going to be bound to the invocation name
         # in the calling scope, so keep returning the dispatcher.
-        return wrapper(dispatcher)
+        return wrapper(dispatcher)  # type:ignore
     else:
-        return wrapper(func)
+        return wrapper(func)  # type:ignore
 
 
-def unwrap(func: Callable[P, T]) -> Callable[P, T]:
+def unwrap[T, **P](func: Callable[P, T]) -> Callable[P, T]:
     while hasattr(func, "__func__"):
-        func = func.__func__
+        func = func.__func__  # type:ignore
     while hasattr(func, "__wrapped__"):
-        func = func.__wrapped__
+        func = func.__wrapped__  # type:ignore
     return func
 
 
-def get_full_name(obj: Callable[P, T]) -> str:
+def get_full_name[T, **P](obj: Callable[P, T]) -> str:
     return obj.__module__ + "." + obj.__qualname__

@@ -1,15 +1,14 @@
 import ast
 import inspect
 import importlib
-from typing import Any, Callable, Type, TypeVar
+from typing import Any, Callable, Type
+from vpy.lib.lib_types import VersionId
 from vpy.lib.slice import eval_slice
 from vpy.lib.transformers.decorators import RemoveDecoratorsTransformer
 
-T = TypeVar("T")
 
-
-def run(
-    fun: Callable[..., T], v: str, *args: tuple[Any, ...], **kwargs: dict[str, Any]
+def run[T, **P](
+    fun: Callable[P, T], v: VersionId, *args: P.args, **kwargs: P.kwargs
 ) -> T:
     # grab the module where fun is defined
     mod = inspect.getmodule(fun)

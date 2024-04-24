@@ -1,16 +1,16 @@
 import ast
 from types import ModuleType
-from typing import Type, TypeVar
+from typing import Type
 
 
 from vpy.lib.lib_types import VersionId
 from vpy.lib.transformers.module import ModuleTransformer
 from vpy.lib.utils import parse_module
 
-T = TypeVar("T")
 
-
-def eval_slice(module: ModuleType, cls: Type[T], v: VersionId) -> Type[T]:
+def eval_slice[T](module: ModuleType, cls: Type[T], v: VersionId) -> Type[T]:
+    if module.__file__ is None:
+        assert False, "Error parsing module file"
     mod_ast, _ = parse_module(module.__file__)
     sl_mod = ModuleTransformer(v).visit(mod_ast)
     try:
