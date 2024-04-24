@@ -59,6 +59,8 @@ class MethodLensTransformer(ast.NodeTransformer):
         if mdef is None:
             assert False
         if method_lens is None or method_lens.node is None:
+            for expr in node.body:
+                self.visit(expr)
             return node
         if mdef.interface not in self.cls_ast.body:
             mdef_copy = copy(mdef.interface)
@@ -161,7 +163,7 @@ class MethodLensTransformer(ast.NodeTransformer):
                         attr=node.func.attr,
                     )
                     if get_at(method_v_from) == self.v_from:
-                        node.func.attr = f"__{self.v_from}_{method_v_from.name}"
+                        node.func.attr = f"__{self.v_from}__{method_v_from.name}"
                     if method_lens is not None and method_lens.node is not None:
                         node.func.attr = method_lens.node.name
 
