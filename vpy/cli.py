@@ -2,7 +2,6 @@ import argparse
 import json
 import logging
 import os
-import inspect
 import ast
 import importlib.util
 from vpy.lib.lib_types import VersionId
@@ -12,14 +11,13 @@ from vpy.lib.utils import parse_module, graph
 
 
 # TODO: Refactor this code, read errors from namecheckvisitor
-def graph_versions(file) -> dict[str, list]:
+def graph_versions(file: str) -> dict[str, list]:
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     if spec is None or spec.loader is None:
         exit("Error reading module.")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module_ast = ast.parse(inspect.getsource(module))
-    versions = {}
+    with open(file) as f:
+        module_ast = ast.parse("\n".join(f.readlines()))
+    versions: dict[str, list] = {}
     for node in module_ast.body:
         if isinstance(node, ast.ClassDef):
             versions[node.name] = graph(node).tree()
@@ -30,10 +28,10 @@ def list_versions(file: str) -> set[VersionId]:
     spec = importlib.util.spec_from_file_location(file[:-3], file)
     if spec is None or spec.loader is None:
         exit("Error reading module.")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module_ast = ast.parse(inspect.getsource(module))
-    # versions: dict[str, set[VersionId]] = {}
+    # module = importlib.util.module_from_spec(spec)
+    # spec.loader.exec_module(module)
+    with open(file) as f:
+        module_ast = ast.parse("\n".join(f.readlines()))
     versions: set[VersionId] = set()
     for node in module_ast.body:
         if isinstance(node, ast.ClassDef):
@@ -47,9 +45,7 @@ def target(file: str, version: VersionId, strict: bool = False):
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
         exit(f"Error reading module from file {file}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    mod_ast, visitor = parse_module(module)
+    mod_ast, visitor = parse_module(file)
     if visitor.all_failures != []:
         exit(1)
     if strict:
@@ -64,9 +60,7 @@ def check(file: str):
     spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
     if spec is None or spec.loader is None:
         exit(f"Error reading module from file {file}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    _, visitor = parse_module(module)
+    _, visitor = parse_module(file)
     if visitor.all_failures != []:
         return 0
     return 1
@@ -93,34 +87,7 @@ def argparser() -> argparse.ArgumentParser:
         help="Get explicit code of a version",
         action="store_true",
     )
-    parser.add_argument("--new", help="Create a new version")
-    parser.add_argument("--upgrades", nargs="+", help="List of upgrades")
-    parser.add_argument("--replaces", nargs="+", help="List of replaces")
     return parser
-
-
-def new_version(
-    file: str,
-    replaces: list[VersionId] | None,
-    upgrades: list[VersionId] | None,
-    name: str,
-):
-    if replaces is None:
-        replaces = []
-    if upgrades is None:
-        upgrades = []
-    if any(v not in list_versions(file) for v in replaces + upgrades):
-        exit("Invalid version specification.")
-    spec = importlib.util.spec_from_file_location(os.path.basename(file)[:-3], file)
-    if spec is None or spec.loader is None:
-        exit("Error reading module.")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    mod_ast, _ = parse_module(module)
-    mod_ast = AddVersionTransformer(
-        VersionId(name), replaces=replaces, upgrades=upgrades
-    ).visit(mod_ast)
-    print(ast.unparse(ast.fix_missing_locations(mod_ast)))
 
 
 def cli_main():
@@ -140,10 +107,6 @@ def cli_main():
 
     if args.target:
         target(args.input, VersionId(args.target), strict=args.strict)
-        exit()
-
-    if args.new:
-        new_version(args.input, args.replaces, args.upgrades, args.new)
         exit()
 
     exit(check(args.input))
