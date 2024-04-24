@@ -392,8 +392,6 @@ class LensCheckVisitor(BaseNodeVisitor):
             del lens_sig.parameters["f"]
         if isinstance(
             lens_sig.can_assign(m_sig, self.name_check_visitor), CanAssignError
-        ) or isinstance(
-            m_sig.can_assign(lens_sig, self.name_check_visitor), CanAssignError
         ):
             self.show_error(
                 lens,
