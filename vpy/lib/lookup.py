@@ -397,7 +397,7 @@ def fields_at(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
     Returns the set of fields explicitly defined at version v.
     """
     methods = methods_at(cls_ast, v)
-    visitor = ClassFieldCollector(cls_ast, [m.name for m in methods], v)
+    visitor = ClassFieldCollector([m.name for m in methods], v)
     for m in methods:
         visitor.visit(m)
     parent_fields = {f for p in g.parents(v) for f in fields_at(g, cls_ast, p.name)}

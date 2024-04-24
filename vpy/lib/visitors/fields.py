@@ -1,5 +1,8 @@
 from ast import (
+    AnnAssign,
+    Assign,
     Attribute,
+    AugAssign,
     ClassDef,
     Constant,
     Del,
@@ -12,7 +15,7 @@ from ast import (
 from typing import Type
 
 from vpy.lib.lib_types import Field, FieldReference, VersionId
-from vpy.lib.utils import get_at, is_obj_attribute, typeof_node, is_field
+from vpy.lib.utils import get_at, typeof_node, is_field
 from vpy.typechecker.pyanalyze.value import AnySource, AnyValue, TypedValue
 
 
@@ -22,9 +25,8 @@ class ClassFieldCollector(NodeVisitor):
     `f` is the `Field` object and `i` is a boolean indicating whether this field is defined in `__init__` or not.
     """
 
-    def __init__(self, cls_ast: ClassDef, cls_methods: list[str], v: VersionId):
+    def __init__(self, cls_methods: list[str], v: VersionId):
         self.__cls_methods = cls_methods
-        self.__cls_ast = cls_ast
         self.__v = v
         self.__in_constructor = False
         self.fields: dict[Field, bool] = dict()
@@ -40,37 +42,48 @@ class ClassFieldCollector(NodeVisitor):
         # Case where we are in a nested function
         except AssertionError:
             pass
-        self.__in_constructor = node.name == "__init__"
+        self.__in_constructor: bool = node.name == "__init__"
+        self.__caller_attr: str | None
+        if len(node.args.args) > 0:
+            self.__caller_attr = node.args.args[0].arg
+        else:
+            self.__caller_attr = None
         self.generic_visit(node)
 
-    def visit_Assign(self, node):
+    def visit_Assign(self, node: Assign):
         for target in node.targets:
-            if isinstance(target, Attribute) and is_obj_attribute(
-                target, obj_type=self.__cls_ast.name
-            ):
-                if target.attr not in self.__cls_methods:
+            if isinstance(target, Attribute):
+                if (
+                    isinstance(target.value, Name)
+                    and (target.value.id == self.__caller_attr)
+                    and target.attr not in self.__cls_methods
+                ):
                     self.__add_field(Field(name=target.attr, type=typeof_node(target)))
 
-    def visit_AnnAssign(self, node):
-        if isinstance(node.target, Attribute) and is_obj_attribute(
-            node.target, obj_type=self.__cls_ast.name
+    def visit_AnnAssign(self, node: AnnAssign):
+        if (
+            isinstance(node.target, Attribute)
+            and (isinstance(node.target.value, Name))
+            and (node.target.value.id == self.__caller_attr)
+            and (node.target.attr not in self.__cls_methods)
         ):
-            if node.target.attr not in self.__cls_methods:
-                field_type = AnyValue(AnySource(AnySource.default))
-                if isinstance(node.annotation, Name):
-                    field_type = TypedValue(node.annotation.id)
-                elif isinstance(node.annotation, Constant):
-                    field_type = TypedValue(node.annotation.value)
-                self.__add_field(Field(node.target.attr, type=field_type))
+            field_type = AnyValue(AnySource(AnySource.default))
+            if isinstance(node.annotation, Name):
+                field_type = TypedValue(node.annotation.id)
+            elif isinstance(node.annotation, Constant):
+                field_type = TypedValue(node.annotation.value)
+            self.__add_field(Field(node.target.attr, type=field_type))
 
-    def visit_AugAssign(self, node):
-        if isinstance(node.target, Attribute) and is_obj_attribute(
-            node.target, obj_type=self.__cls_ast.name
+    def visit_AugAssign(self, node: AugAssign):
+        if (
+            isinstance(node.target, Attribute)
+            and (isinstance(node.target.value, Name))
+            and (node.target.value.id == self.__caller_attr)
+            and (node.target.attr not in self.__cls_methods)
         ):
-            if node.target.attr not in self.__cls_methods:
-                self.__add_field(
-                    Field(name=node.target.attr, type=typeof_node(node.target))
-                )
+            self.__add_field(
+                Field(name=node.target.attr, type=typeof_node(node.target))
+            )
 
     def __add_field(self, field: Field):
         if self.__in_constructor:
