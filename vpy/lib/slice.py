@@ -11,7 +11,7 @@ T = TypeVar("T")
 
 
 def eval_slice(module: ModuleType, cls: Type[T], v: VersionId) -> Type[T]:
-    mod_ast, _ = parse_module(module)
+    mod_ast, _ = parse_module(module.__file__)
     sl_mod = ModuleTransformer(v).visit(mod_ast)
 
     sl_cls = [

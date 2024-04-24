@@ -13,6 +13,7 @@ from ast import (
 )
 import ast
 from copy import deepcopy
+from functools import cache
 import inspect
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, Type, runtime_checkable
@@ -63,14 +64,15 @@ def is_field(node: Attribute, fields: set[Field] | None) -> bool:
     return is_obj_attribute(node) and any(field.name == node.attr for field in fields)
 
 
-def typeof_node(node: ast.AST) -> Value | None:
+def typeof_node(node: ast.AST) -> Value:
     @runtime_checkable
     class Typed(Protocol):
         inferred_value: Value
 
     if isinstance(node, Typed):
         return node.inferred_value
-    return None
+    # TODO: Check if this makes sense (this happens before NameCheckVisitor annotates the AST)
+    return AnyValue(AnySource.default)
 
 
 def set_typeof_node(node: ast.AST, type_value: Value) -> None:
@@ -138,6 +140,7 @@ def is_obj_attribute(node: Attribute, obj_type: str | None = None) -> bool:
     return False
 
 
+@cache
 def graph(cls: ClassDef) -> Graph:
     """
     Build a version graph for class `cls`.
@@ -172,7 +175,7 @@ def get_class_environment(cls_ast: ClassDef):
         env.methods[k.name] = {  # type: ignore
             m  # type: ignore
             for m in methods_lookup(g, cls_ast, k.name)
-            if isinstance(m, VersionedMethod) or m[0].name not in dir(object)
+            # if isinstance(m, VersionedMethod) or m[0].name not in dir(object)
         }
         env.bases[k.name] = base_versions(g, cls_ast, k.name)
         env.fields[k.name] = fields_lookup(g, cls_ast, k.name)
@@ -195,16 +198,16 @@ def get_module_environment(mod_ast: Module):
     return env
 
 
-def parse_module(module: ModuleType) -> tuple[Module, "NameCheckVisitor"]:
+def parse_module(module: str) -> tuple[Module, "NameCheckVisitor"]:
     from vpy.typechecker.pyanalyze.ast_annotator import annotate_file
 
     # src = inspect.getsource(module)
-    tree, visitor = annotate_file(module.__file__)
+    tree, visitor = annotate_file(module)
     return tree, visitor
 
 
 def parse_class(module: ModuleType, cls: Type) -> tuple[ClassDef, Graph]:
-    tree, _ = parse_module(module)
+    tree, _ = parse_module(module.__file__)
     cls_ast = [
         node
         for node in tree.body
@@ -214,6 +217,7 @@ def parse_class(module: ModuleType, cls: Type) -> tuple[ClassDef, Graph]:
     return (cls_ast, g)
 
 
+@cache
 def is_lens(node: FunctionDef) -> bool:
     """
     Check if the given `node` is a lens.
@@ -226,6 +230,7 @@ def is_lens(node: FunctionDef) -> bool:
     )
 
 
+@cache
 def get_at(node: FunctionDef) -> VersionId:
     """
     Returns the version id where method `node` is defined.
@@ -242,6 +247,7 @@ def get_at(node: FunctionDef) -> VersionId:
     return VersionId(version_decorators[0].args[0].value)
 
 
+@cache
 def get_to(lens: FunctionDef) -> VersionId:
     """
     Returns the version id to where `lens` is targetting.
@@ -258,6 +264,7 @@ def get_to(lens: FunctionDef) -> VersionId:
     return VersionId(version_decorators[0].args[1].value)
 
 
+@cache
 def get_decorators(node: FunctionDef, dec_name: str) -> list[Call]:
     return [
         dec
@@ -268,6 +275,7 @@ def get_decorators(node: FunctionDef, dec_name: str) -> list[Call]:
     ]
 
 
+@cache
 def field_to_arg(field: Field) -> ast.arg:
     field_arg = ast.arg(arg=field.name)
     arg_t = annotation_from_type_value(field.type)
