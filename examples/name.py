@@ -33,22 +33,6 @@ class Name:
     def get_full_name(self):
         return self.fullname
 
-    @get("full", "init", "first")
-    def lens_first(self):
-        if " " in self.fullname:
-            return self.fullname.split(" ")[0]
-        return self.fullname
-
-    @get("full", "init", "last")
-    def lens_last(self):
-        if " " in self.fullname:
-            return self.fullname.split(" ")[1]
-        return ""
-
-    @get("init", "full", "fullname")
-    def lens_full(self):
-        return f"{self.first} {self.last}"
-
     @at("init")
     def m(self) -> bool:
         return True
@@ -65,13 +49,26 @@ class Name:
     def w(self) -> bool:
         return self.m() == 0
 
+    ######### Lenses #########
+    @get("full", "init", "first")
+    def lens_first(self):
+        if " " in self.fullname:
+            return self.fullname.split(" ")[0]
+        return self.fullname
+
+    @get("full", "init", "last")
+    def lens_last(self):
+        if " " in self.fullname:
+            return self.fullname.split(" ")[1]
+        return ""
+
+    @get("init", "full", "fullname")
+    def lens_full(self):
+        return f"{self.first} {self.last}"
+
     @get("init", "full", "m")
     def lens_m(self, f: Callable[[], int]) -> bool:
         return f() == 0
-
-    # @get("full", "init", "m")
-    # def lens_m_v2(self, f: Callable[[], bool]) -> int:
-    #     return 0 if f() else 1
 
 
 @run("full")
