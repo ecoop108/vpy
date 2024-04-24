@@ -1,5 +1,5 @@
 import ast
-from ast import ClassDef
+from ast import ClassDef, Module
 from collections import defaultdict
 
 from vpy.lib import lookup
@@ -16,7 +16,7 @@ class ModuleStrictTransformer(ast.NodeTransformer):
     def __init__(self, v: VersionId):
         self.v = v
 
-    def visit_Module(self, node):
+    def visit_Module(self, node: Module):
         node = ClassStrictTransformer(v=self.v).visit(node)
         return node
 
@@ -29,7 +29,7 @@ class ModuleTransformer(ast.NodeTransformer):
     def __init__(self, v: VersionId):
         self.v = v
 
-    def visit_Module(self, node):
+    def visit_Module(self, node: Module):
         env = get_module_environment(node)
         node = ClassTransformer(v=self.v, env=env).visit(node)
         return node

@@ -9,13 +9,15 @@ class AddVersionTransformer(ast.NodeTransformer):
     Project a strict slice of a version.
     """
 
-    def __init__(self, v, replaces: list[VersionId], upgrades: list[VersionId]):
+    def __init__(
+        self, v: VersionId, replaces: list[VersionId], upgrades: list[VersionId]
+    ):
         self.version = Version([])
         self.version.name = v
         self.version.upgrades = tuple(upgrades)
         self.version.replaces = tuple(replaces)
 
-    def visit_Module(self, node):
+    def visit_Module(self, node: ast.Module):
         self.generic_visit(node)
         return node
 
