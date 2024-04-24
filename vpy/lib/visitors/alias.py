@@ -46,7 +46,7 @@ class AliasVisitor(ast.NodeVisitor):
         return node
 
     def visit_Assign(self, node: Assign) -> Any:
-        def __collect_ref(alias, n: Attribute):
+        def __collect_ref(alias: ast.expr, n: Attribute):
             obj_type = annotation_from_type_value(typeof_node(n.value))
             if is_field(
                 n,
@@ -101,12 +101,12 @@ class AliasVisitor(ast.NodeVisitor):
                     if isinstance(node.value.func, Attribute)
                     else node.value.func.id
                 )
-                method = next(
-                    m.implementation
-                    for m in self.env.methods[obj_type][self.v_from]
-                    if m.name == mname
-                )
-                if method is not None:
+                try:
+                    method = next(
+                        m.implementation
+                        for m in self.env.methods[obj_type][self.v_from]
+                        if m.name == mname
+                    )
                     visitor = AliasVisitor(g, cls_ast, self.env, self.v_from)
                     rw_visitor = RewriteName(
                         src=Name(id=method.args.args[0].arg, ctx=Load()),
@@ -131,6 +131,8 @@ class AliasVisitor(ast.NodeVisitor):
                                         self.aliases[node.targets[0]] = e
 
                                         found_refs = True
+                except StopIteration:
+                    pass
         if (
             isinstance(node.targets[0], Attribute)
             and not found_refs

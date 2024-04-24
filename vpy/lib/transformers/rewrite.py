@@ -236,7 +236,8 @@ class ExtractLocalVar(ast.NodeTransformer):
         assert False
 
     def visit_Raise(self, node: Raise) -> Any:
-        assert False
+        # TODO: Semantics for this
+        return node
 
     def visit_AsyncFunctionDef(self, node: AsyncFunctionDef) -> Any:
         assert False

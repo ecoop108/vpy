@@ -11,7 +11,6 @@ from vpy.lib.transformers.fields import FieldTransformer
 from vpy.lib.transformers.methods import MethodLensTransformer
 from vpy.lib.transformers.rewrite import ExtractLocalVar
 from vpy.lib.utils import (
-    create_init,
     get_at,
     graph,
     is_lens,
@@ -73,7 +72,7 @@ class MethodTransformer(NodeTransformer):
         self.env = env
         self.v_target = target
 
-    def visit_FunctionDef(self, node):
+    def visit_FunctionDef(self, node: FunctionDef):
         v_from = get_at(node)
         if self.v_target == v_from:
             return node
