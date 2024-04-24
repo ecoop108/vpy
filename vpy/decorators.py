@@ -1,12 +1,15 @@
 import functools
-from typing import Any, Callable, Type, TypeVar
+from typing import Any, Callable, LiteralString, ParamSpec, Type, TypeVar
 import vpy.lib.runtime as r
+
+T = TypeVar("T")
+P = ParamSpec("P")
 
 
 def get(frm: str, to: str, field: str):
-    def decorator_version(fn):
+    def decorator_version(fn: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(fn)
-        def wrapper_version(*args, **kwargs):
+        def wrapper_version(*args: P.args, **kwargs: P.kwargs) -> T:
             return fn(*args, **kwargs)
 
         return wrapper_version
@@ -15,17 +18,14 @@ def get(frm: str, to: str, field: str):
 
 
 def put(frm: str, to: str, field: str):
-    def decorator_put(fn):
+    def decorator_put(fn: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(fn)
-        def wrapper_version(*args, **kwargs):
+        def wrapper_version(*args: P.args, **kwargs: P.kwargs) -> T:
             return fn(*args, **kwargs)
 
         return wrapper_version
 
     return decorator_put
-
-
-T = TypeVar("T")
 
 
 def version(
@@ -37,10 +37,10 @@ def version(
     return decorator_version
 
 
-def run(v: str) -> Callable[..., T]:
-    def decorator_run(f: Callable[..., T]):
+def run(v: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def decorator_run(f: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(f)
-        def wrapper_run(*args: tuple[Any, ...], **kwargs: dict[str, Any]):
+        def wrapper_run(*args: P.args, **kwargs: P.kwargs) -> T:
             return r.run(f, v, *args, **kwargs)
 
         return wrapper_run
@@ -48,8 +48,8 @@ def run(v: str) -> Callable[..., T]:
     return decorator_run
 
 
-def at(name):
-    def overload(func):
+def at(name: LiteralString) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    def overload(func: Callable[P, T]) -> Callable[P, T]:
         """
         May be used as a shortcut for ``overloaded`` and ``overloads(f)``
         when the overloaded function `f` can be automatically identified.
@@ -65,15 +65,15 @@ def at(name):
     return overload
 
 
-def overloaded(func, version):
+def overloaded(func: Callable[P, T], version: str) -> Callable[P, T]:
     """
     Introduces a new overloaded function and registers its first implementation.
     """
     fn = unwrap(func)
 
-    def dispatcher(*args, **kwargs):
+    def dispatcher(*args: P.args, **kwargs: P.kwargs) -> T | None:
         resolved = None
-        resolved = dispatcher.__functions[version]
+        resolved = dispatcher.__functions[version]  # type: ignore
         if resolved:
             return resolved(*args, **kwargs)
 
@@ -87,10 +87,12 @@ def overloaded(func, version):
     return register(dispatcher, func, version)
 
 
-__registry = {}
+__registry: dict[str, Callable[..., Any]] = dict()
 
 
-def register(dispatcher, func, version):
+def register(
+    dispatcher: Callable[P, T | None], func: Callable[P, T], version: str
+) -> Callable[P, T]:
     """
     Registers `func` as an implementation on `dispatcher`.
     """
@@ -113,7 +115,7 @@ def register(dispatcher, func, version):
         return wrapper(func)
 
 
-def unwrap(func):
+def unwrap(func: Callable[P, T]) -> Callable[P, T]:
     while hasattr(func, "__func__"):
         func = func.__func__
     while hasattr(func, "__wrapped__"):
@@ -121,5 +123,5 @@ def unwrap(func):
     return func
 
 
-def get_full_name(obj):
+def get_full_name(obj: Callable[P, T]) -> str:
     return obj.__module__ + "." + obj.__qualname__
