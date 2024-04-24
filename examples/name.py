@@ -31,7 +31,6 @@ class Name:
 
     @at("full")
     def get_full_name(self):
-        self.fullname = "x"
         return self.fullname
 
     @get("full", "init", "first")
@@ -73,3 +72,15 @@ class Name:
     # @get("full", "init", "m")
     # def lens_m_v2(self, f: Callable[[], bool]) -> int:
     #     return 0 if f() else 1
+
+
+@run("full")
+def main():
+    obj = Name("Rolling Stones")
+    print(obj.get_full_name())
+    obj.set_last("Stoned")
+    print(obj.get_full_name())
+
+
+if __name__ == "__main__":
+    main()
