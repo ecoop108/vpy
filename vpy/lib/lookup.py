@@ -270,7 +270,8 @@ def __replacement_method_lookup(
     if m == "__init__":
         return None
     rm: set[FunctionDef] = set()
-    gr = g.delete(v)
+    # TODO: Method conflicts here sibling version replacements
+    # gr = g.delete(v)
     for r in g.replacements(v):
         try:
             me = _method_lookup(g, cls_ast, m, r.name)

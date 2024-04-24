@@ -42,15 +42,14 @@ class Graph(DiGraph):
     def __init__(self, *, graph: list[Version] = []):
         super().__init__()
         for version in graph:
-            self.add_node(version, label=version.name)
-        for version in graph:
+            self.add_node(version)
             for upgrade in version.upgrades:
                 try:
                     uv = next(v for v in graph if v.name == upgrade)
                     self.add_edge(version, uv, label="upgrades")
                 except StopIteration:
                     pass
-            for replace in graph:
+            for replace in version.replaces:
                 try:
                     rv = next(v for v in graph if v.name == replace)
                     self.add_edge(version, rv, label="replaces")
@@ -68,11 +67,7 @@ class Graph(DiGraph):
 
     def parents(self, v: VersionId) -> set[Version]:
         """Returns the ids of versions that v either upgrades or replaces."""
-        if version := self.find_version(v):
-            return {
-                self.find_version(p) for p in set(version.upgrades + version.replaces)
-            }
-        return set()
+        return {e[1] for e in self.out_edges(self.find_version(v))}
 
     def delete(self, v: VersionId) -> "Graph":
         other = deepcopy(self)

@@ -1,4 +1,5 @@
 from ast import (
+    AnnAssign,
     Attribute,
     Call,
     ClassDef,
@@ -12,9 +13,7 @@ from ast import (
     expr,
 )
 import ast
-from copy import deepcopy
 from functools import cache
-import inspect
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, Type, runtime_checkable
 
@@ -36,13 +35,15 @@ from vpy.lib.lib_types import (
     Lenses,
     Version,
     VersionId,
-    VersionedMethod,
 )
 import uuid
 
 
 def fields_in_function(
-    node: FunctionDef, fields: set[Field], *, ctx=(Load, Store, Del)
+    node: FunctionDef,
+    fields: set[Field],
+    *,
+    ctx=(Load, Store, Del),
 ) -> set[Field]:
     from vpy.lib.visitors.fields import FieldReferenceCollector
 
@@ -206,7 +207,7 @@ def parse_module(module: str) -> tuple[Module, "NameCheckVisitor"]:
     return tree, visitor
 
 
-def parse_class(module: ModuleType, cls: Type) -> tuple[ClassDef, Graph]:
+def parse_class[T](module: ModuleType, cls: Type[T]) -> tuple[ClassDef, Graph]:
     tree, _ = parse_module(module.__file__)
     cls_ast = [
         node
@@ -242,7 +243,7 @@ def get_at(node: FunctionDef) -> VersionId:
         and isinstance(d.func, Name)
         and d.func.id in ["get", "at", "put", "run"]
     ]
-    if len(version_decorators) == 0:
+    if len(version_decorators) != 1:
         assert False
     return VersionId(version_decorators[0].args[0].value)
 
@@ -259,7 +260,7 @@ def get_to(lens: FunctionDef) -> VersionId:
         and isinstance(d.func, Name)
         and d.func.id in ["get", "put"]
     ]
-    if len(version_decorators) == 0:
+    if len(version_decorators) != 1:
         assert False
     return VersionId(version_decorators[0].args[1].value)
 
@@ -323,7 +324,7 @@ def create_init(g: Graph, cls_ast: ClassDef, v: VersionId) -> FunctionDef:
     )
 
     # Create the function body consisting of assigning each argument to the corresponding field
-    assign_statements = []
+    assign_statements: list[AnnAssign] = []
     for param in inherited_fields:
         lhs = create_obj_attr(
             obj=ast.Name(id="self", ctx=ast.Load()),
