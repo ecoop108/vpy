@@ -45,8 +45,8 @@ class A:
     # must introduce a new version, 4, that merges versions 2 and 3, and
     # introduces a merge definition of method `m`
 
-    @at("4")
-    def m(self) -> str: ...
+    # @at("4")
+    # def m(self) -> str: ...
 
 
 @version(name="1")
@@ -64,8 +64,8 @@ class B:
 
     # To solve the conflict we either introduce a definition of `m` in version
     # 3, or add a new replacement version (4) with such a definition.
-    @at("3")
-    def m(self): ...
+    # @at("3")
+    # def m(self): ...
 
     # @at("4")
     # def m(self): ...
@@ -77,7 +77,7 @@ class B:
 class C:
     # Versions 2 and 3 introduce separate definitions of method `m`. Since these
     # are branch versions, this does not create a conflict for clients in
-    # version 1."""
+    # version 1.
 
     @at("3")
     def m(self) -> str: ...

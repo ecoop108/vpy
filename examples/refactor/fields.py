@@ -15,7 +15,6 @@ class A:
 
     @at("2")
     def __init__(self):
-
         # Field `x` is redefined here. However, since its type is the same, it
         # uses the identity lens to and from version 1.
         self.x = 1
@@ -25,8 +24,8 @@ class A:
 
         # self.x: int | None = 1
 
-        # This throws an error since field `y` is not defined in this version
-        # The field is removed because it is never assigned to in version 2.
+        # This throws an error since field `y` is not defined in this version.
+        # The field is (implicitly) removed because it is never assigned to in version 2.
 
         # print(self.y)
 
@@ -48,7 +47,6 @@ class B:
 
     @at("2")
     def __init__(self):
-
         # Field `x` is redefined and field `y` is introduced. As before, since
         # the type of `x` is the same, it uses the identity lens to and from
         # version 1. For field `y`, a lens is required.

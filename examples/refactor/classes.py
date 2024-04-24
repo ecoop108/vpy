@@ -6,12 +6,11 @@ from vpy.decorators import version, run
 class A: ...
 
 
-### Class removal ###
-# Class B is not defined in version 2 of this module
 @version(name="1")
 class B: ...
 
 
+# Class B is not defined in version 2 of this module
 @run("2")
 def main():
     print(A())

@@ -1,4 +1,4 @@
-# This file covers (most of) the examples shown in the paper.
+# This file covers the running example shown in the paper (Section 2).
 
 from typing import Callable
 from vpy.decorators import at, get, run, version
@@ -73,15 +73,3 @@ class Name:
     # @get("full", "init", "m")
     # def lens_m_v2(self, f: Callable[[], bool]) -> int:
     #     return 0 if f() else 1
-
-
-@run("full")
-def main():
-    obj = Name("Rolling Stones")
-    print(obj.get_full_name())
-    obj.set_last("Stoned")
-    print(obj.get_full_name())
-
-
-if __name__ == "__main__":
-    main()

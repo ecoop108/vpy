@@ -1,3 +1,5 @@
+# This example shows the validation of the version graph.
+
 from vpy.decorators import at, version
 
 
@@ -11,11 +13,11 @@ class C: ...
 
 @version(name="1")
 class D:
-    # This definition will throw an error since version 2 is not defined.""
+    # This definition will throw an error since version 2 is not defined.
     @at("2")
     def m(self): ...
 
-    # This definition will throw an error since it has no version annotation.""
+    # This definition will throw an error since it has no version annotation.
     def n(self): ...
 
 

@@ -1,12 +1,15 @@
-from vpy.decorators import at, get, run, version
+# This example shows the type-checking of function calls in the presence of
+# multiple versioned definitions of the same method.
+
+from vpy.decorators import at, version
 
 
 @version(name="1")
 @version(name="2", upgrades=["1"])
 class C:
-
     @at("1")
     def b(self) -> str: ...
+
     @at("2")
     def b(self) -> bool: ...
 

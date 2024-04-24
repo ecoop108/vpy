@@ -6,7 +6,7 @@ from vpy.decorators import at, get, version
 @version(name="1")
 @version(name="2", replaces=["1"])
 @version(name="3", replaces=["2"])
-class C:
+class A:
     @at("1")
     def x(self) -> str: ...
 
@@ -39,7 +39,7 @@ class C:
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class C:
+class B:
     # Method `m` does not require lenses since its signature is the same in both versions, which means clients from 1
     # can use the definition of 2 without their code breaking.
     @at("1")
@@ -63,7 +63,7 @@ class C:
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class C:
+class D:
     # In this case, the signature of method `m` is different in versions 1 and 2 (return type and parameters don't
     # match). To allow client code in version 1 to use the definition from version 2 (as specified in the version
     # graph), the type checker require a lens for method `m` from version 1 to version 2.
@@ -74,19 +74,19 @@ class C:
     def m(self, *, x) -> str: ...
 
     # You can uncomment the lens below and then the program type checks.
-    # @get("1", "2", "e")
-    # def lens_e(self, f) -> bool: ...
+    # @get("1", "2", "m")
+    # def lens_m(self, f, x) -> bool: ...
 
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class C:
-    # In this case, we provide a wrongly-typed lens for method `m`: the signature does not match the signature of `m` in
-    # version 1. To fix the program change `z` to `x`.
+class D:
     @at("1")
     def m(self, x) -> bool: ...
     @at("2")
     def m(self, y) -> str: ...
 
+    # In this case, we provide a wrongly-typed lens for method `m`: the signature does not match the signature of `m` in
+    # version 1. To fix the program change `z` to `x`.
     @get("1", "2", "m")
     def lens_m(self, f, z) -> bool: ...

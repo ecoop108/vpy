@@ -22,7 +22,7 @@ class Dogs:
     # Lens for __init__ method from version v1 to version v2
     # Maps how to rewrite a call to __init__ in version v1 to version v2
     @get("v1", "v2", "__init__")
-    def lens_v1_v2_init(self, f, *args, **kwargs):
+    def lens_v1_v2_init(self, f, n):
         return f(fn="1", ln="2")
 
     # Lens from version v2 to dogs field of version v1

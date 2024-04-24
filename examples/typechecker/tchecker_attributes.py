@@ -1,9 +1,12 @@
+# This example shows the type-checking of class attributes in the presence of
+# multiple versioned definitions.
+
 from vpy.decorators import at, version
 
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class C:
+class A:
     @at("1")
     def m(self): ...
 
@@ -17,8 +20,9 @@ class C:
 
 @version(name="1")
 @version(name="2", upgrades=["1"])
-class C:
-    # In this example we make a reference to an non-defined attribute at version 2 (`x`)
+class B:
+    # In this example we make a reference to non-defined attributes: attribute
+    # `z` in version 1 and attribute `x` in version 2.
     @at("1")
     def m(self):
         self.x = ...

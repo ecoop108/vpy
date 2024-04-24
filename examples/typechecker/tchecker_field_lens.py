@@ -5,31 +5,32 @@ from vpy.decorators import at, get, version
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class C:
+class A:
     @at("1")
     def m(self):
         self.x = 1
+        return self.x
 
-    # Field `x` is redefined as a str in version 2, thus we need a lens from version 1 for this field.
+    # Field `x` is renamed as `y` and its type is now `str` in version 2, thus we need a lens from version 1 for this field.
     @at("2")
     def m(self):
-        self.x = "1"
-        self.x += "0"
+        self.y += "1"
+        return self.y
 
-    # @get("1", "2", "x")
+    # This lens is required to rewrite method `m` of version `2` because there is an access to field `y` (line 17).
+    # @get("1", "2", "y")
     # def lens_x1(self) -> str:
     #     return str(self.x)
 
-    # This lens is required to rewrite method `m` of version `2` because there is an assignment to field `x`.
-
+    # This lens is required to rewrite method `m` of version `2` because there is an assignment to field `y`.
     # @get("2", "1", "x")
     # def lens_x2(self) -> int:
-    #     return int(self.x)
+    #     return int(self.y)
 
 
 @version(name="1")
 @version(name="2", replaces=["1"])
-class C:
+class B:
     @at("1")
     def __init__(self):
         self.x = 1
@@ -45,8 +46,6 @@ class C:
     def m(self):
         # This method is available for version 1 so a get lens for field `y` is required
         return self.y
-        # self.w = 3
-        # return self.y
 
     @at("2")
     def n(self):

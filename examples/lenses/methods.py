@@ -55,18 +55,3 @@ class C:
     @at("2")
     def w(self) -> bool:
         return self.m() == 0
-
-    # If the developer wants to adapt the semantics of method `m` from version `2` to clients in version `1`, they
-    # can write a lens in that direction.
-
-    # Note that this is not required. If the lens is not present, the implementation of version `2` of `m` is used
-    # instead.
-
-    # To see this in action, extract a slice of this program for version `1` and inspect method `w`.
-
-    # Then, uncomment the following lens and extract the slice again. Now the definition of `w` uses the lens to adapt
-    # the method.
-
-    @get("2", "1", "m")
-    def lens_m_full(self, f: Callable[[int], bool]) -> int:
-        return not f(1)
