@@ -13,14 +13,15 @@ T = TypeVar("T")
 def eval_slice(module: ModuleType, cls: Type[T], v: VersionId) -> Type[T]:
     mod_ast, _ = parse_module(module.__file__)
     sl_mod = ModuleTransformer(v).visit(mod_ast)
-
-    sl_cls = [
-        c
-        for c in sl_mod.body
-        if isinstance(c, ast.ClassDef) and c.name == f"{cls.__name__}_{v}"
-    ][0]
-
+    try:
+        sl_cls = next(
+            c
+            for c in sl_mod.body
+            if isinstance(c, ast.ClassDef) and c.name == f"{cls.__name__}"
+        )
+    except StopIteration:
+        assert False
     s = ast.unparse(ast.fix_missing_locations(sl_cls))
     out: list[Type[T]] = [cls]
-    exec(s + f"\nout[0]={cls.__name__}_{v}")
+    exec(s + f"\nout[0]={cls.__name__}")
     return out[0]

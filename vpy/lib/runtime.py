@@ -30,7 +30,7 @@ def run(
     locs: dict[str, Callable[..., T]] = {}
     for cls_name, cls in classes.items():
         importlib.import_module(mod.__name__)
-        setattr(mod, f"{cls_name}_{v}", cls)
+        setattr(mod, f"{cls_name}", cls)
 
     # register new functions
     compiled_code = compile(f_ast, "<ast>", "exec")
@@ -42,5 +42,5 @@ def run(
     # teardown runtime
     for cls_name, cls in classes.items():
         importlib.import_module(mod.__name__)
-        delattr(mod, f"{cls_name}_{v}")
+        delattr(mod, f"{cls_name}")
     return result
