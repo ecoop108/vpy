@@ -2,6 +2,7 @@ from vpy.decorators import get, version, at
 
 
 ### Field removal ###
+# To see the results, extract a slice for version 2.
 @version(name="1")
 @version(name="2", replaces=["1"])
 class A:
@@ -34,6 +35,7 @@ class A:
 
 
 ### Field addition ###
+# To see the results, extract a slice for version 1.
 @version(name="1")
 @version(name="2", replaces=["1"])
 class B:
@@ -57,6 +59,7 @@ class B:
 
 
 ### Field rename ###
+# To see the results, extract a slice for version 1.
 @version(name="1")
 @version(name="2", replaces=["1"])
 class C:

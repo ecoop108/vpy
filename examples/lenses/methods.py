@@ -2,7 +2,7 @@
 # the presence of breaking change.
 
 from typing import Callable
-from vpy.decorators import at, get, run, version
+from vpy.decorators import at, get, version
 
 
 @version(name="1")
