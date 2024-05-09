@@ -1,4 +1,4 @@
-from ast import ClassDef, Constant, FunctionDef, List, Load, Store
+from ast import ClassDef, Constant, FunctionDef, List, Load, Module, Store
 from typing import TYPE_CHECKING
 
 from networkx import NetworkXNoCycle, find_cycle
@@ -6,7 +6,7 @@ from vpy.typechecker.pyanalyze.node_visitor import (
     BaseNodeVisitor,
     Failure,
 )
-from vpy.typechecker.pyanalyze.value import CallableValue, CanAssignError, Value
+from vpy.typechecker.pyanalyze.value import CallableValue, CanAssignError
 from .name_check_visitor import ClassAttributeChecker, NameCheckVisitor
 from .error_code import ErrorCode
 
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
 
 class VersionCheckVisitor(BaseNodeVisitor):
-    def visit_Module(self, node):
-        versions = set()
+    def visit_Module(self, node: Module):
+        versions: set[Graph] = set()
         for cls in node.body:
             # Visit class node and collect version definitions
             if isinstance(cls, ClassDef):
@@ -28,7 +28,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
         if self.seen_errors:
             return
 
-    def visit_ClassDef(self, node):
+    def visit_ClassDef(self, node: ClassDef):
         from vpy.lib.utils import get_decorators
         from vpy.lib.lib_types import Version
 
@@ -110,7 +110,7 @@ class VersionCheckVisitor(BaseNodeVisitor):
         for fn in (n for n in node.body if isinstance(n, FunctionDef)):
             self.visit(fn)
 
-    def visit_FunctionDef(self, node):
+    def visit_FunctionDef(self, node: FunctionDef):
         from vpy.lib.utils import get_at, get_decorators
 
         at_dec = get_decorators(node, "at")
@@ -177,7 +177,7 @@ class LensCheckVisitor(BaseNodeVisitor):
         attribute_checker.tree = self.tree
         return self.all_failures
 
-    def visit_ClassDef(self, node):
+    def visit_ClassDef(self, node: ClassDef):
         from vpy.lib.utils import graph, get_class_environment, get_decorators, get_at
 
         cls_env = get_class_environment(node)
@@ -320,10 +320,24 @@ class LensCheckVisitor(BaseNodeVisitor):
         self, g: "Graph", cls_ast: ClassDef, cls_env: "ClassEnvironment"
     ):
         from vpy.lib.lib_types import VersionedMethod
-        from vpy.lib.lookup import get_at, is_lens
+        from vpy.lib.lookup import (
+            get_at,
+            is_lens,
+            methods_lookup,
+            MethodConflictException,
+        )
 
         for v in g.all():
-            methods = {m for m in cls_env.methods[v.name]}
+            try:
+                methods = methods_lookup(g, cls_ast, v.name, _except=True)
+            except MethodConflictException as e:
+                for d in e.definitions:
+                    self.show_error(
+                        node=d,
+                        e=f"Conflicting definitions of method {d.name} in version {v.name}: {','.join([get_at(d) for d in e.definitions])}",
+                    )
+                return
+            # methods = {m for m in cls_env.methods[v.name]}
             lenses_methods = {
                 VersionedMethod(
                     name=l.node.name, interface=l.node, implementation=l.node
