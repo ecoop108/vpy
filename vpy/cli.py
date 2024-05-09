@@ -46,11 +46,11 @@ def target(file: str, version: VersionId, strict: bool = False):
     if spec is None or spec.loader is None:
         exit(f"Error reading module from file {file}")
     mod_ast, visitor = parse_module(file)
-    if visitor.all_failures != []:
-        exit(1)
     if strict:
         mod_ast = ModuleStrictTransformer(version).visit(mod_ast)
     else:
+        if visitor.all_failures != []:
+            exit(1)
         mod_ast = ModuleTransformer(version).visit(mod_ast)
     slices = [ast.unparse(ast.fix_missing_locations(mod_ast))]
     print("\n".join(slices))
