@@ -1,6 +1,6 @@
 import ast
 import copy
-from ast import Call, ClassDef
+from ast import Attribute, Call, ClassDef
 
 from vpy.lib.lib_types import Environment, Graph, VersionId
 from vpy.lib.utils import (
@@ -34,7 +34,7 @@ class FieldTransformer(ast.NodeTransformer):
         self.v_target = v_target
         self.v_from = v_from
 
-    def visit_Attribute(self, node):
+    def visit_Attribute(self, node: Attribute):
         if not (is_obj_attribute(node) and isinstance(node.ctx, ast.Load)):
             node = self.generic_visit(node)
             return node

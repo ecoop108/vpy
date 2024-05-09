@@ -69,7 +69,7 @@ def overloaded[T, **P](func: Callable[P, T], version: str) -> Callable[P, T]:
     """
     fn = unwrap(func)
 
-    def dispatcher(*args: P.args, **kwargs: P.kwargs) -> T | None:
+    def dispatcher(*args, **kwargs) -> T | None:
         resolved = None
         resolved = dispatcher.__functions[version]  # type: ignore
         if resolved:
