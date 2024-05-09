@@ -80,7 +80,9 @@ def fields_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[Field]:
         return base_fields
 
 
-def methods_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionedMethod]:
+def methods_lookup(
+    g: Graph, cls_ast: ClassDef, v: VersionId, *, _except: bool = False
+) -> set[VersionedMethod]:
     """
     Returns the methods of a class available at version v. These may be
     explictly defined at v or inherited from some other related version(s).
@@ -99,7 +101,9 @@ def methods_lookup(g: Graph, cls_ast: ClassDef, v: VersionId) -> set[VersionedMe
                     mdef = _method_lookup(g, cls_ast, node.name, v)
                     if mdef is not None:
                         self.methods.add(mdef)
-                except MethodConflictException:
+                except MethodConflictException as e:
+                    if _except:
+                        raise e
                     return
 
     visitor = MethodCollector()
@@ -235,13 +239,12 @@ def __field_lens_lookup(
     bases_v = base_versions(g, cls_ast, v)
     bases_t = base_versions(g, cls_ast, t)
     for field in fields_v:
-        if bases_v <= bases_t or field in fields_lookup(g, cls_ast, t):
-            result[field] = None
+        path = __field_lens_path_lookup(g, v, t, cls_ast, field.name)
+        if path is None:
+            if bases_v <= bases_t or field in fields_lookup(g, cls_ast, t):
+                result[field] = None
         else:
-            path = __field_lens_path_lookup(g, v, t, cls_ast, field.name)
-            if path is not None:
-                lens = path[0]
-                result[field] = lens
+            result[field] = path[0]
     return result
 
 
