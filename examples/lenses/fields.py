@@ -30,9 +30,9 @@ class C:
     # field `y`. If you comment this lens you will see a warning from the type
     # checker that the assignment to field `y` has no effects in version 1.
 
-    # @get("2", "1", "x")
-    # def lens_x(self) -> int:
-    #     return int(self.y)
+    @get("2", "1", "x")
+    def lens_x(self) -> int:
+        return int(self.y)
 
 
 @version(name="1")
