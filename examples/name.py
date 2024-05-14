@@ -6,7 +6,7 @@ from vpy.decorators import at, get, run, version
 
 @version(name="init")
 @version(name="bugfix", replaces=["init"])
-@version(name="full", replaces=["init"])
+@version(name="full", upgrades=["init"])
 class Name:
     @at("init")
     def __init__(self, first: str, last: str):
